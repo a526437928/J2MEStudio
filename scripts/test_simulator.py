@@ -26,33 +26,48 @@ def main():
     prefix = "standalone" if args.standalone else "emulator"
     os.chdir(ROOT)
     devices = json.loads(run("list", "devices", "available", "--json"))["devices"]
-    candidates = [d for runtime, items in devices.items() if runtime.endswith("iOS-26-2")
+    candidates = [{**d, "runtimeID": runtime} for runtime, items in devices.items() if runtime.endswith("iOS-26-2")
                   for d in items if d["name"] in ["iPhone 17 Pro", "iPhone 17"] and d.get("isAvailable")]
     if not candidates:
         raise RuntimeError("An installed iOS 26.2 iPhone simulator is required")
     device = sorted(candidates, key=lambda d: d["name"] != "iPhone 17 Pro")[0]
+    state_file = ROOT / "build/logs/ci-simulator.json"
+    if state_file.exists():
+        previous = json.loads(state_file.read_text())
+        if any(d["udid"] == previous["udid"] and d.get("isAvailable") for items in devices.values() for d in items):
+            device = previous
     udid = device["udid"]
     # Bring up the simulator's display frontend as well as CoreSimulator. The
     # display link needs a live display; a pre-created device may also stall on
     # its first cold boot on a hosted runner. Retain every boot attempt.
     developer = Path(subprocess.check_output(["xcode-select", "-p"], text=True).strip())
     for attempt in [1, 2]:
-        subprocess.run(["open", "-a", str(developer / "Applications/Simulator.app"),
-                        "--args", "-CurrentDeviceUDID", udid], check=True)
         boot_log = ROOT / f"build/logs/{prefix}-boot-{attempt}.log"
         try:
-            output = run("bootstatus", udid, "-b", timeout=180)
+            current = json.loads(run("list", "devices", "--json"))["devices"]
+            state = next(d["state"] for items in current.values() for d in items if d["udid"] == udid)
+            if state == "Shutdown": run("boot", udid, stderr=subprocess.STDOUT)
+            subprocess.run(["open", "-a", str(developer / "Applications/Simulator.app"),
+                            "--args", "-CurrentDeviceUDID", udid], check=True)
+            # The device has already been asked to boot. -b would race the
+            # frontend and can fail with 'Unable to boot ... state: Booted'.
+            output = run("bootstatus", udid, timeout=180, stderr=subprocess.STDOUT)
             boot_log.write_text(output)
+            state_file.write_text(json.dumps(device))
             print(f"PASS {prefix} simulator boot attempt {attempt}", flush=True)
             break
-        except subprocess.TimeoutExpired as error:
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
             output = error.output or b""
             if isinstance(output, bytes): output = output.decode(errors="replace")
-            boot_log.write_text(output + "\nBOOT TIMEOUT after 180 seconds\n")
+            boot_log.write_text(output + "\n" + str(error) + "\n")
             (ROOT / f"build/logs/{prefix}-boot-{attempt}-devices.json").write_text(run("list", "devices", "--json"))
-            print(f"Simulator boot attempt {attempt} timed out; original output retained", flush=True)
+            print(f"Simulator boot attempt {attempt} failed; original output retained", flush=True)
             if attempt == 2: raise
             subprocess.run(["xcrun", "simctl", "shutdown", udid], check=False, timeout=30)
+            types = json.loads(run("list", "devicetypes", "--json"))["devicetypes"]
+            device_type = next(item["identifier"] for item in types if item["name"] == device["name"])
+            udid = run("create", "J2ME Studio CI", device_type, device["runtimeID"])
+            device = {**device, "udid": udid}
     run("install", udid, str(args.app.resolve()))
     documents = Path(run("get_app_container", udid, args.bundle, "data")) / "Documents"
     if args.standalone:
