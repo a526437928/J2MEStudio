@@ -24,6 +24,7 @@ class StandaloneTests(unittest.TestCase):
         profile = json.loads((target / 'J2MEEmulator/Resources/Standalone/standalone.json').read_text(encoding='utf-8'))
         self.assertEqual(profile['name'], '诊断独立版')
         self.assertEqual(profile['jarResource'], 'embedded.jar')
+        self.assertEqual(profile['controls']['directionMode'], 'numericDirections')
         self.assertEqual((target / 'J2MEEmulator/Resources/Standalone/embedded.jar').read_bytes(), self.jar.read_bytes())
         icon = target / 'J2MEEmulator/Resources/Assets.xcassets/AppIcon.appiconset/icon.png'
         self.assertEqual(icon.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
@@ -38,3 +39,9 @@ class StandaloneTests(unittest.TestCase):
         target = self.root / 'existing'; target.mkdir(); (target/'sentinel').write_text('keep')
         with self.assertRaises(ValueError): module.prepare(self.jar, target, 'Test', 'org.example.game', True)
         self.assertEqual((target/'sentinel').read_text(), 'keep')
+
+    def test_refuse_unknown_direction_mode(self):
+        profile = self.root / 'controls.json'
+        profile.write_text(json.dumps({'controls': {'directionMode': 'invalid'}}))
+        with self.assertRaisesRegex(ValueError, 'joystick'):
+            module.prepare(self.jar, self.root/'output', 'Test', 'org.example.game', True, profile=profile)

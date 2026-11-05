@@ -39,7 +39,7 @@ def prepare(jar, output, name, bundle, confirm_rights, icon=None, profile=None):
         raise ValueError('Standalone builds must use a different Bundle ID')
     if not name.strip() or '\n' in name:
         raise ValueError('A nonempty one-line app name is required')
-    controls = {'orientation': 'automatic', 'scaling': 'integer', 'keyScale': 1, 'opacity': 0.9, 'controls': {}, 'keys': {}}
+    controls = {'orientation': 'automatic', 'scaling': 'integer', 'directionMode': 'numericDirections', 'keyScale': 1, 'opacity': 0.9, 'controls': {}, 'keys': {}}
     configuration = {'name': name, 'jarResource': 'embedded.jar', 'screenWidth': 240, 'screenHeight': 320, 'fps': 60, 'render3dScale': 1, 'controls': controls}
     if profile:
         custom = json.loads(profile.read_text(encoding='utf-8'))
@@ -52,6 +52,8 @@ def prepare(jar, output, name, bundle, confirm_rights, icon=None, profile=None):
         raise ValueError('Unsupported FPS or 3D scale')
     if controls['orientation'] not in ['automatic', 'portrait', 'landscape'] or controls['scaling'] not in ['fit', 'integer', 'original']:
         raise ValueError('Invalid orientation or pixel scaling mode')
+    if controls['directionMode'] not in ['numericDirections', 'navigation', 'legacyNumeric']:
+        raise ValueError('Invalid joystick direction mode')
     if not 0.65 <= controls['keyScale'] <= 1.25 or not 0.3 <= controls['opacity'] <= 1:
         raise ValueError('Invalid control size or opacity')
     with zipfile.ZipFile(jar) as archive:

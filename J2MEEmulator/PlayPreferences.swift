@@ -10,12 +10,27 @@ nonisolated struct ControlPlacement: Codable, Sendable {
 nonisolated struct PlayPreferences: Codable, Sendable {
     enum Orientation: String, Codable, CaseIterable, Sendable { case automatic, portrait, landscape }
     enum Scaling: String, Codable, CaseIterable, Sendable { case fit, integer, original }
+    enum DirectionMode: String, Codable, CaseIterable, Sendable { case numericDirections, navigation, legacyNumeric }
     var orientation: Orientation = .automatic
     var scaling: Scaling = .fit
+    var directionMode: DirectionMode = .numericDirections
     var keyScale: Double = 1
     var opacity: Double = 0.9
     var controls: [String: ControlPlacement] = [:]
     var keys: [String: ControlPlacement] = [:]
+
+    private enum CodingKeys: String, CodingKey { case orientation, scaling, directionMode, keyScale, opacity, controls, keys }
+    init() { }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        orientation = try values.decodeIfPresent(Orientation.self, forKey: .orientation) ?? .automatic
+        scaling = try values.decodeIfPresent(Scaling.self, forKey: .scaling) ?? .fit
+        directionMode = try values.decodeIfPresent(DirectionMode.self, forKey: .directionMode) ?? .numericDirections
+        keyScale = try values.decodeIfPresent(Double.self, forKey: .keyScale) ?? 1
+        opacity = try values.decodeIfPresent(Double.self, forKey: .opacity) ?? 0.9
+        controls = try values.decodeIfPresent([String: ControlPlacement].self, forKey: .controls) ?? [:]
+        keys = try values.decodeIfPresent([String: ControlPlacement].self, forKey: .keys) ?? [:]
+    }
 
     mutating func normalize() {
         keyScale = keyScale.isFinite ? min(1.25, max(0.65, keyScale)) : 1
@@ -28,6 +43,33 @@ nonisolated struct PlayPreferences: Codable, Sendable {
         ControlPlacement(x: p.x.isFinite ? min(1, max(0, p.x)) : 0.5,
                          y: p.y.isFinite ? min(1, max(0, p.y)) : 0.5,
                          scale: p.scale.isFinite ? min(1.4, max(0.6, p.scale)) : 1)
+    }
+}
+
+nonisolated enum JoystickMapping {
+    private static let numeric: [Set<Int32>] = [[54], [54, 56], [56], [56, 52], [52], [52, 50], [50], [50, 54]]
+    private static let navigation: [Set<Int32>] = [[-4], [-4, -2], [-2], [-2, -3], [-3], [-3, -1], [-1], [-1, -4]]
+    private static let legacy: [Set<Int32>] = [[54], [57], [56], [55], [52], [49], [50], [51]]
+    /// Clockwise sectors starting at right, matching atan2 in UIKit coordinates.
+    static func codes(sector: Int, mode: PlayPreferences.DirectionMode) -> Set<Int32> {
+        guard (0..<8).contains(sector) else { return [] }
+        switch mode {
+        case .numericDirections:
+            return numeric[sector]
+        case .navigation:
+            return navigation[sector]
+        case .legacyNumeric:
+            return legacy[sector]
+        }
+    }
+}
+
+nonisolated struct JoystickKeyState {
+    private(set) var held: Set<Int32> = []
+    mutating func transition(to next: Set<Int32>) -> (pressed: [Int32], released: [Int32]) {
+        let change = (pressed: next.subtracting(held).sorted(), released: held.subtracting(next).sorted())
+        held = next
+        return change
     }
 }
 

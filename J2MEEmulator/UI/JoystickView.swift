@@ -2,7 +2,7 @@
 //  JoystickView.swift
 //  J2MEEmulator
 //
-//  Virtual analog joystick that emits 8-way numpad key presses (1-4, 6-9).
+//  Virtual joystick with per-game directional chords or legacy numeric mapping.
 //  No fire/5 — that stays on the numpad.
 //
 
@@ -13,17 +13,14 @@ class JoystickView: UIView {
     private let baseView = UIView()
     private let thumbView = UIView()
 
-    private var activeCode: Int32 = 0
-    var isEditingLayout = false
+    private var keyState = JoystickKeyState()
+    var directionMode: PlayPreferences.DirectionMode = .numericDirections {
+        didSet { if oldValue != directionMode { cancelInput() } }
+    }
+    var isEditingLayout = false { didSet { if isEditingLayout { cancelInput() } } }
 
     /// Dead zone as fraction of base radius (no key press within this range)
     private let deadZoneRatio: CGFloat = 0.25
-
-    /// 8-way direction codes mapped to numpad keys, clockwise from right.
-    /// J2ME maps: 2=UP, 8=DOWN, 4=LEFT, 6=RIGHT (top-of-keypad = up).
-    /// Sectors follow iOS atan2: 0=right, π/2=down, π=left, -π/2=up.
-    ///   Right=6  DownRight=9  Down=8  DownLeft=7  Left=4  UpLeft=1  Up=2  UpRight=3
-    private static let sectorCodes: [Int32] = [54, 57, 56, 55, 52, 49, 50, 51]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -120,13 +117,21 @@ class JoystickView: UIView {
 
     /// CI drives the production direction calculation, not a hard-coded keycode.
     func diagnosticSetRight(pressed: Bool) {
+        diagnosticSetSector(0, pressed: pressed)
+    }
+
+    func diagnosticSetSector(_ sector: Int, pressed: Bool) {
         guard !isEditingLayout else { return }
         if pressed {
             layoutIfNeeded()
-            update(at: CGPoint(x: baseView.frame.midX + baseView.bounds.width * 0.4,
-                               y: baseView.frame.midY))
+            let angle = CGFloat(sector) * .pi / 4
+            let distance = baseView.bounds.width * 0.4
+            update(at: CGPoint(x: baseView.frame.midX + cos(angle) * distance,
+                               y: baseView.frame.midY + sin(angle) * distance))
         } else { reset() }
     }
+
+    func cancelInput() { reset() }
 
     private func update(at point: CGPoint) {
         let cx = baseView.center.x
@@ -145,7 +150,7 @@ class JoystickView: UIView {
 
         // Dead zone check
         if dist < radius * deadZoneRatio {
-            if activeCode != 0 { releaseKey(activeCode) }
+            setCodes([])
             return
         }
 
@@ -153,16 +158,11 @@ class JoystickView: UIView {
         var a = angle
         if a < 0 { a += 2 * .pi }
         let sector = Int((a + .pi / 8) / (.pi / 4)) % 8
-        let code = Self.sectorCodes[sector]
-
-        if code != activeCode {
-            if activeCode != 0 { releaseKey(activeCode) }
-            pressKey(code)
-        }
+        setCodes(JoystickMapping.codes(sector: sector, mode: directionMode))
     }
 
     private func reset() {
-        if activeCode != 0 { releaseKey(activeCode) }
+        setCodes([])
         UIView.animate(withDuration: 0.15) { [weak self] in
             guard let self else { return }
             self.thumbView.center = self.baseView.center
@@ -170,13 +170,9 @@ class JoystickView: UIView {
         }
     }
 
-    private func pressKey(_ code: Int32) {
-        activeCode = code
-        KeyInputController.shared.press(code)
-    }
-
-    private func releaseKey(_ code: Int32) {
-        KeyInputController.shared.release(code)
-        activeCode = 0
+    private func setCodes(_ next: Set<Int32>) {
+        let change = keyState.transition(to: next)
+        for code in change.released { KeyInputController.shared.release(code) }
+        for code in change.pressed { KeyInputController.shared.press(code) }
     }
 }

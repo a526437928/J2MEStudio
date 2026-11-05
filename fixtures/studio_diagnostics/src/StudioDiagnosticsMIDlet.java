@@ -52,12 +52,15 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
         try {
             Thread.sleep(5000);
             boolean pass = rmsOK && canvas.paints > 0 && canvas.combo && canvas.pressed >= 2
-                && canvas.released >= 2 && canvas.repeated > 0 && canvas.directionAfterFive && starts >= 2 && pauses >= 1;
+                && canvas.released >= 2 && canvas.repeated > 0 && canvas.directionAfterFive && starts >= 2 && pauses >= 1
+                && canvas.diagonalPairs == 15 && canvas.skillKeyPresses == 0 && canvas.heldDirections == 0;
             String json = "{\"pass\":" + pass + ",\"launches\":" + launches
                 + ",\"rms\":" + rmsOK + ",\"paints\":" + canvas.paints
                 + ",\"pressed\":" + canvas.pressed + ",\"released\":" + canvas.released
                 + ",\"repeated\":" + canvas.repeated + ",\"combo\":" + canvas.combo
                 + ",\"rightKeyCode\":" + canvas.rightKeyCode
+                + ",\"diagonalPairs\":" + canvas.diagonalPairs + ",\"skillKeyPresses\":" + canvas.skillKeyPresses
+                + ",\"heldDirections\":" + canvas.heldDirections
                 + ",\"directionAfterFive\":" + canvas.directionAfterFive
                 + ",\"starts\":" + starts + ",\"pauses\":" + pauses + "}";
             FileOutputStream out = new FileOutputStream(System.getProperty("app.save.root") + "/diagnostic-result.json");
@@ -77,8 +80,9 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
     private final class TestCanvas extends Canvas {
         volatile int paints, pressed, released, repeated;
         volatile int rightKeyCode;
+        volatile int diagonalPairs, skillKeyPresses, heldDirections;
         volatile boolean right, five, combo, fiveWasReleased, directionAfterFive;
-        private boolean numericRight, navigationRight;
+        private int directionSources;
         private String lastKey = "请按方向键、数字键和软键";
         protected void paint(Graphics graphics) {
             graphics.setColor(0x102030); graphics.fillRect(0, 0, getWidth(), getHeight());
@@ -89,13 +93,15 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
                 "按下/松开：" + pressed + "/" + released,
                 "长按重复：" + repeated, "组合按键：" + (combo ? "已收到" : "待测试"),
                 "暂停/恢复：" + pauses + "/" + starts,
-                "退出重开，存档次数应加一"};
+                "退出重开，存档次数应加一",
+                "技能数字键：" + skillKeyPresses};
             for (int i = 0; i < lines.length; i++) graphics.drawString(lines[i], 8, 8 + i * 25, Graphics.TOP | Graphics.LEFT);
             paints++;
         }
         protected void keyPressed(int code) {
             pressed++;
             setRight(code, true);
+            if (code == KEY_NUM1 || code == KEY_NUM3 || code == KEY_NUM7 || code == KEY_NUM9) skillKeyPresses++;
             if (getGameAction(code) == RIGHT) rightKeyCode = code;
             if (code == KEY_NUM5) five = true;
             if (right && five) combo = true;
@@ -111,11 +117,24 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
             repaint();
         }
         private void setRight(int code, boolean held) {
-            // The original eight-way joystick emits numeric 6; MIDP also has
-            // a dedicated navigation-right key. Keep their held states separate.
-            if (code == KEY_NUM6) numericRight = held;
-            if (code == KEY_RIGHT) navigationRight = held;
-            right = numericRight || navigationRight;
+            int source;
+            switch (getGameAction(code)) {
+                case UP: source = 1; break;
+                case LEFT: source = 2; break;
+                case DOWN: source = 4; break;
+                case RIGHT: source = 8; break;
+                default: source = 0;
+            }
+            // Numeric directions and dedicated navigation keys are independent
+            // sources for the same action. Releasing one must preserve the other.
+            if (code < 0) source <<= 4;
+            if (held) directionSources |= source; else directionSources &= ~source;
+            heldDirections = (directionSources | (directionSources >> 4)) & 15;
+            right = (heldDirections & 8) != 0;
+            if ((heldDirections & 3) == 3) diagonalPairs |= 1;
+            if ((heldDirections & 9) == 9) diagonalPairs |= 2;
+            if ((heldDirections & 6) == 6) diagonalPairs |= 4;
+            if ((heldDirections & 12) == 12) diagonalPairs |= 8;
         }
     }
 }

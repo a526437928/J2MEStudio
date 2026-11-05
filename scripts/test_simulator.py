@@ -100,6 +100,7 @@ def main():
                             result = json.loads(result_file.read_text())
                             assert result["pass"] and result["launches"] == expected, result
                             assert result["rightKeyCode"] == 54, "Exercise the actual numeric-6 joystick mapping"
+                            assert result["diagonalPairs"] == 15 and result["skillKeyPresses"] == 0 and result["heldDirections"] == 0, result
                             geometry = json.loads((save / "diagnostic-input-layout.json").read_text())
                             assert geometry["valid"] and geometry["scaling"] == scaling, geometry
                             assert geometry["orientation"] == orientation + ".", geometry

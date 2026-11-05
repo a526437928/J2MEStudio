@@ -150,6 +150,17 @@ class GameViewController: UIViewController {
                     j2me_input_post_key(20, 0)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { j2me_input_post_key(21, 0) }
+                // All four real joystick diagonals must reach Java as direction
+                // pairs, without accidentally pressing numeric skill keys.
+                for (index, sector) in [5, 7, 3, 1].enumerated() {
+                    let start = 2.2 + Double(index) * 0.4
+                    DispatchQueue.main.asyncAfter(deadline: .now() + start) { [weak self] in
+                        self?.joystickView?.diagnosticSetSector(sector, pressed: true)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.2) { [weak self] in
+                        self?.joystickView?.diagnosticSetSector(sector, pressed: false)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("--studio-crash-test") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { raise(SIGABRT) }
                 }
@@ -241,11 +252,12 @@ class GameViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if lastSize != view.bounds.size { KeyInputController.shared.releaseAll(); lastSize = view.bounds.size }
+        if lastSize != view.bounds.size { joystickView?.cancelInput(); KeyInputController.shared.releaseAll(); lastSize = view.bounds.size }
         layoutControls()
     }
 
     private func layoutControls() {
+        joystickView?.directionMode = preferences.directionMode
         let safe = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 8, dy: 4)
         guard safe.width > 0, safe.height > 100 else { return }
         let landscape = view.bounds.width > view.bounds.height
@@ -451,6 +463,7 @@ class GameViewController: UIViewController {
     }
 
     @objc private func platformPause() {
+        joystickView?.cancelInput()
         KeyInputController.shared.releaseAll()
         j2me_input_post_key(20, 0)
     }

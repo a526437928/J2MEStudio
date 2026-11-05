@@ -37,6 +37,15 @@ final class PlaySettingsViewController: UIViewController {
         }, for: .valueChanged)
         stack.addArrangedSubview(scaling)
         label("原始像素：1 个游戏像素对应 1 个屏幕物理像素。画面过大时会等比例缩小以完整显示。")
+        label("方向盘模式（仅此游戏）")
+        let direction = UISegmentedControl(items: ["数字方向", "独立方向", "旧八向"])
+        direction.selectedSegmentIndex = PlayPreferences.DirectionMode.allCases.firstIndex(of: value.directionMode) ?? 0
+        direction.addAction(UIAction { [weak self, weak direction] _ in
+            guard let direction else { return }
+            self?.value.directionMode = PlayPreferences.DirectionMode.allCases[direction.selectedSegmentIndex]; self?.changed()
+        }, for: .valueChanged)
+        stack.addArrangedSubview(direction)
+        label("数字方向：斜向同时按两个方向键，不触发 1/3/7/9 技能。独立方向：使用手机专用方向键。旧八向：斜向发送 1/3/7/9，保留旧游戏兼容模式。")
         for (title, minimum, maximum, initial, opacity) in [("按键整体大小", Float(0.65), Float(1.25), Float(value.keyScale), false), ("按键透明度", Float(0.3), Float(1), Float(value.opacity), true)] {
             label(title)
             let slider = UISlider(); slider.minimumValue = minimum; slider.maximumValue = maximum; slider.value = initial

@@ -1,8 +1,8 @@
 Manifest-Version: 1.0
-MIDlet-Name: J2ME Studio 诊断 0.4.1
-MIDlet-Version: 0.4.1
+MIDlet-Name: J2ME Studio 诊断 0.4.2
+MIDlet-Version: 0.4.2
 MIDlet-Vendor: J2ME Studio
-MIDlet-1: J2ME Studio 诊断 0.4.1, , StudioDiagnosticsMIDlet
+MIDlet-1: J2ME Studio 诊断 0.4.2, , StudioDiagnosticsMIDlet
 MicroEdition-Configuration: CLDC-1.1
 MicroEdition-Profile: MIDP-2.0
 

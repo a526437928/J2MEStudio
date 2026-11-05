@@ -15,6 +15,10 @@ public final class HostDiagnosticInputSmoke {
         field.setAccessible(true);
         return field.getBoolean(canvas);
     }
+    private static int number(Canvas canvas, String name) throws Exception {
+        Field field = canvas.getClass().getDeclaredField(name);
+        field.setAccessible(true); return field.getInt(canvas);
+    }
     private static void require(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
     }
@@ -46,6 +50,17 @@ public final class HostDiagnosticInputSmoke {
         require(flag(aliases, "directionAfterFive"), "Repeat must survive another alias releasing");
         aliases.postKeyReleased(Canvas.KEY_NUM6);
         require(!flag(aliases, "right"), "All right aliases must release");
+        Canvas diagonals = fresh();
+        for (int[] pair : new int[][] {{Canvas.KEY_NUM2, Canvas.KEY_NUM4}, {Canvas.KEY_NUM2, Canvas.KEY_NUM6},
+                {Canvas.KEY_NUM8, Canvas.KEY_NUM4}, {Canvas.KEY_NUM8, Canvas.KEY_NUM6}}) {
+            diagonals.postKeyPressed(pair[0]); diagonals.postKeyPressed(pair[1]);
+            diagonals.postKeyReleased(pair[0]); diagonals.postKeyReleased(pair[1]);
+        }
+        require(number(diagonals, "diagonalPairs") == 15 && number(diagonals, "heldDirections") == 0,
+            "All directional pairs must arrive and release");
+        require(number(diagonals, "skillKeyPresses") == 0, "Directional pairs must not press skill numbers");
+        diagonals.postKeyPressed(Canvas.KEY_NUM1);
+        require(number(diagonals, "skillKeyPresses") == 1, "The test must detect a real skill key press");
         System.out.println("PASS: diagnostic numeric/navigation right, order, release and negative cases");
     }
 }
