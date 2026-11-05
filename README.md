@@ -1,10 +1,16 @@
 # J2ME Studio — iPhone Java 游戏模拟器
 
-基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前开发范围为第一阶段：依赖审查及无签名真机构建链。完整中文界面和兼容性验收尚未完成。
+基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.2.0：已建立云构建，并实现中文游戏库、搜索、文件导入、独立存档与配置、长按组合输入、生命周期处理和免费中文诊断 MIDlet。实体 iPhone 与商业游戏兼容性仍待验收。
 
 ## 当前验证状态
 
 Windows 与 GitHub macOS Runner 均已实际编译 439 个 Java API 源文件及原仓库测试 MIDlet，源码检查、RMS 宿主测试和打包回归测试通过。[真实云构建 #1](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功编译 C/Objective-C/Swift，并上传真机 `.app` 及未签名 IPA。IPA 仍需要在 Windows 本地重新签名。**不能把 Java 编译、iOS 编译、IPA 封装、签名和 iPhone 运行视为同一结果。** 最新证据见 [第一阶段审查](docs/第一阶段审查.md)。
+
+## 第二阶段使用
+
+点击“+”导入合法 JAR；同名不同内容分别保存，同内容复用记录。长按游戏可配置分辨率、帧率和 3D 增强，查看运行记录或管理存档。左上角“测试 MIDlet”安装本项目自编、Apache-2.0 的中文诊断程序。旧 JAR 与存档迁移保留备份，歧义归属会提示。
+
+已在 iOS 模拟器中经真实 miniJVM 连续运行诊断程序两次，验证 Canvas、中文显示、合成组合输入、长按、暂停恢复与 RMS 启动计数 1 → 2。详细结果及设备验收步骤见 [第二阶段验收](docs/第二阶段验收.md)。
 
 ## 仓库结构和构建
 
@@ -16,6 +22,7 @@ J2MEEmulator/minijvm/       已随仓库提交的 C JVM 及 TLS/压缩/线程依
 J2MEEmulator/Resources/     原版运行库 JAR、API JAR、SoundFont
 j2me_api/src/              Java ME API 源码
 test_midlet/               原仓库的测试 MIDlet，无商业游戏
+fixtures/studio_diagnostics/ 本项目自编的中文诊断 MIDlet
 scripts/                   跨平台 Java 编译、检查、真机构建及 IPA 封装
 .github/workflows/         macOS 自动构建
 ```
@@ -44,7 +51,7 @@ bash scripts/build_ios.sh
 
 ## 推送并开始云构建
 
-本地工程和 `J2MEStudio.bundle` 包含完整 Git 历史，基线提交与上游 `8afc8d808ca22160139333d1d58138c7dca91169` 相同。修复已推送至 `codex/phase1-build` 分支；后续修改后可在含 `.git` 的工程目录执行：
+本地工程和 `J2MEStudio.bundle` 包含完整 Git 历史，基线提交与上游 `8afc8d808ca22160139333d1d58138c7dca91169` 相同。修复已推送至 `codex/phase2-library` 分支；后续修改后可在含 `.git` 的工程目录执行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1
@@ -52,6 +59,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1
 
 若 Git Credential Manager 打开登录窗口，请本人在浏览器完成 GitHub 登录。脚本仅推送新分支，不强制覆盖远端 `main`。仓库 Actions 页面应出现 `iOS unsigned device build`；Fork 首次使用可能需要手动启用 Actions，然后选择该分支 Run workflow。公共仓库使用 GitHub 标准托管 Runner 通常免费，须以账号当时的额度和规则为准。[GitHub 计费说明](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions)
 
-首轮产物：[未签名 IPA 与 .app Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391216595)、[日志与 xcresult](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391236607)。GitHub 产物保留 14 天，本地交付也保存了真实下载副本。
+第一阶段历史产物：[未签名 IPA 与 .app Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391216595)、[日志与 xcresult](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391236607)。GitHub 产物保留 14 天，本地交付也保存了真实下载副本。
 
 下载、签名、安装与存档备份见 [Windows 侧载指南](docs/Windows侧载指南.md)。许可证和后续工作见 [第三方声明](THIRD_PARTY_NOTICES.md)及[架构与后续阶段](docs/架构与后续阶段.md)。

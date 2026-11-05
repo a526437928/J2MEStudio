@@ -41,6 +41,7 @@ def main():
             for game in index["games"]:
                 save = documents / "Saves" / str(uuid.UUID(game["id"])).upper()
                 (save / "diagnostic-result.json").unlink(missing_ok=True)
+                (save / "diagnostic-frame-ready").unlink(missing_ok=True)
         env = {**os.environ, "SIMCTL_CHILD_J2ME_STUDIO_SMOKE_TEST": "1"}
         logpath = ROOT / f"build/logs/simulator-launch-{iteration}.log"
         with logpath.open("w") as log:
@@ -49,8 +50,11 @@ def main():
             try:
                 start = time.monotonic()
                 screenshot = False
+                frame_ready_at = None
                 while time.monotonic() - start < 75:
-                    if not screenshot and time.monotonic() - start > 3:
+                    if frame_ready_at is None and list(documents.glob("Saves/*/diagnostic-frame-ready")):
+                        frame_ready_at = time.monotonic()
+                    if not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
                         run("io", udid, "screenshot", str(ROOT / f"build/artifacts/diagnostics-{iteration}.png"))
                         screenshot = True
                     files = list(documents.glob("Saves/*/diagnostic-result.json"))
@@ -60,6 +64,7 @@ def main():
                         if journal.exists() and json.loads(journal.read_text()).get("status") == "finished":
                             assert result["pass"], result
                             assert result["launches"] == iteration, result
+                            assert screenshot, "No screenshot of a displayed game frame"
                             results.append(result)
                             print(f"PASS simulator launch {iteration}: {result}", flush=True)
                             break

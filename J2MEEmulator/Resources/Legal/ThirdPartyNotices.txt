@@ -19,4 +19,4 @@
 
 没有包含、下载或打包《诛仙伏魔录》或其他未经许可的商业游戏。`test_midlet` 来自已指明的 Apache-2.0 上游仓库；新增 HostRmsSmoke 测试为本项目编写。
 
-本阶段变更：修复 Java 构建路径和跨平台编译；添加未签名真机工作流、源码检查及打包测试；修改应用身份与统一部署版本。未替换 C miniJVM、Java 运行类库、M3G 或 MascotCapsule 实现。
+本阶段变更：修复 Java 构建路径和跨平台编译；添加未签名真机工作流、源码检查及打包测试；修改应用身份与统一部署版本。第二阶段新增游戏库、导入与存档隔离、中文界面、生命周期状态处理、按键重复控制和自编中文诊断 MIDlet。未替换 C miniJVM 解释器、Java 启动类库、M3G 或 MascotCapsule 实现。`fixtures/studio_diagnostics` 与新增测试代码采用 Apache-2.0，可合法分发；测试夹具中专供解析器检查的伪 class 字节不会进入 App 或用于运行验收。

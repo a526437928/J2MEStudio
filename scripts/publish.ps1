@@ -1,6 +1,6 @@
 param(
     [string]$Repository = 'a526437928/J2MEStudio',
-    [string]$Branch = 'codex/phase1-build'
+    [string]$Branch = 'codex/phase2-library'
 )
 $ErrorActionPreference = 'Stop'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid GitHub repository name' }

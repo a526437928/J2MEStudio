@@ -118,6 +118,10 @@ class GameViewController: UIViewController {
         if ProcessInfo.processInfo.arguments.contains("--studio-smoke-test") {
             emulatorView.onFirstFrame = { [weak self] in
                 self?.placeholderIconView?.isHidden = true
+                if let root = self?.saveRoot {
+                    // CI screenshot timing follows a displayed frame, not app-launch time.
+                    try? Data([1]).write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-frame-ready"))
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     KeyInputController.shared.press(-4)
                     KeyInputController.shared.press(53)

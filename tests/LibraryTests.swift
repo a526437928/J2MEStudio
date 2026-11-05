@@ -13,7 +13,7 @@ import Foundation
         try fm.createDirectory(at: temp, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: temp) }
         let validate = JARMetadata.validate
-        for n in ["empty.jar", "short.jar", "truncated.jar", "missing-class.jar"] {
+        for n in ["empty.jar", "short.jar", "truncated.jar", "missing-class.jar", "empty-deflate.jar", "oversize-entry.jar", "stored-mismatch.jar", "wrong-magic.jar"] {
             do { try validate(fixtures.appendingPathComponent(n)); throw NSError(domain: "Accepted invalid JAR", code: 1) }
             catch GameLibraryError.invalidMIDlet { checks += 1 }
         }

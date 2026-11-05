@@ -27,10 +27,10 @@
 
 ## JAR 导入与验证
 
-打开 App 后用原版“+”按钮从文件 App 选择 `.jar`；也可通过 iTunes 文件共享或文件 App 将合法 JAR 放入应用 Documents，再刷新/重新进入列表。当前菜单仍为上游英文，完整中文化在后续阶段。构建自动生成的测试 MIDlet 位于 `J2MEEmulator/Resources/apps/test_midlet.jar`，可另行导出导入进行验收；不能因为能导入就认为已能运行。
+打开 App 后用原版“+”按钮从文件 App 选择 `.jar`；也可通过 iTunes 文件共享或文件 App 将合法 JAR 放入应用 Documents，再刷新/重新进入列表。第二阶段游戏库与管理菜单已中文化。点击左上角“测试 MIDlet”可直接安装本项目自编的中文诊断程序。构建自动生成的测试 MIDlet 位于 `J2MEEmulator/Resources/apps/test_midlet.jar`，可另行导出导入进行验收；不能因为能导入就认为已能运行。
 
 ## 更新与备份
 
-更新前先复制应用 Documents 中的游戏 JAR 和 `Games Data` 整个目录到电脑。尽量使用相同 Apple ID、相同最终签名 Bundle ID、相同安装选项覆盖更新，保持数据容器。不要先删除旧 App；卸载通常会删除本地存档。重新签名工具改变 Bundle ID、换 Apple ID 或操作系统策略变化都可能影响覆盖安装和数据保留，必须先备份。
+更新前先备份应用整个 Documents，包括 `library.json`、`games`、`Saves`、`Games Data` 和 `Import Backups`；缺少 library.json 会丢失 UUID 与存档的对应关系。尽量使用相同 Apple ID、相同最终签名 Bundle ID、相同安装选项覆盖更新，保持数据容器。不要先删除旧 App；卸载通常会删除本地存档。重新签名工具改变 Bundle ID、换 Apple ID 或操作系统策略变化都可能影响覆盖安装和数据保留，必须先备份。
 
-本阶段改用了项目自己的 Bundle ID `org.j2mestudio.emulator`，若之前安装过上游 JarBox，它可能作为另一 App 安装；先手动备份，不承诺自动迁移。旧版中文文件名可能发生存档 ID 碰撞，后续修复需要迁移测试。
+本阶段改用了项目自己的 Bundle ID `org.j2mestudio.emulator`，若之前安装过上游 JarBox，它可能作为另一 App 安装；先手动备份，不承诺自动迁移。第二阶段已采用 UUID 隔离；旧版中文名称碰撞会提示并保留原件，不自动猜测存档归属。
