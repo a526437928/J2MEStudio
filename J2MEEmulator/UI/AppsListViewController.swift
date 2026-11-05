@@ -24,6 +24,7 @@ class AppsListViewController: UIViewController,
     private var scanning = false
     private var smokeStarted = false
     private var pendingMessage: (String, String)?
+    private let animatedBackground = AnimatedBackgroundView()
 
     /// Directory where imported JARs are stored
     private static var gamesDirectory: String {
@@ -44,7 +45,7 @@ class AppsListViewController: UIViewController,
         definesPresentationContext = true
 
         // Animated blob background
-        let bg = AnimatedBackgroundView()
+        let bg = animatedBackground
         bg.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bg)
         NSLayoutConstraint.activate([
@@ -111,22 +112,30 @@ class AppsListViewController: UIViewController,
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        animatedBackground.setAnimationsActive(true)
         if let message = pendingMessage {
             pendingMessage = nil
             showMessage(message.0, message.1)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive),
+                                               name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        animatedBackground.setAnimationsActive(false)
         NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     @objc private func appDidBecomeActive() {
+        animatedBackground.setAnimationsActive(true)
         scanApps()
     }
+
+    @objc private func appWillResignActive() { animatedBackground.setAnimationsActive(false) }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -414,7 +423,7 @@ class AppsListViewController: UIViewController,
                 }
             }
             let fpsMenu = UIMenu(title: "帧率上限",
-                                  subtitle: "过高帧率可能影响部分游戏",
+                                  subtitle: "降低可减少负载，也可能改变游戏速度",
                                   image: UIImage(systemName: "gauge.with.needle"),
                                   children: fpsActions)
 

@@ -45,6 +45,7 @@ class GameViewController: UIViewController {
     private var joystickView: JoystickView?
     private var numpadView: NumpadView?
     private var hasStarted = false
+    private var performanceRecorder: PerformanceRecorder?
     private var preferences = PlayPreferences()
     private let settingsButton = UIButton(type: .system)
     private let editorHint = UILabel()
@@ -102,6 +103,7 @@ class GameViewController: UIViewController {
 
         emulatorView.canvasWidth = canvasWidth
         emulatorView.canvasHeight = canvasHeight
+        emulatorView.presentationFPS = fpsLimit
 
         do { preferences = try preferenceStore.load() }
         catch { print("[Settings] Preserved unreadable configuration: \(error)") }
@@ -132,6 +134,7 @@ class GameViewController: UIViewController {
         if ProcessInfo.processInfo.arguments.contains("--studio-smoke-test") {
             emulatorView.onFirstFrame = { [weak self] in
                 self?.placeholderIconView?.isHidden = true
+                self?.emulatorView.diagnosticBurst()
                 if let root = self?.saveRoot {
                     self?.writeDiagnosticGeometry()
                     // CI screenshot timing follows a displayed frame, not app-launch time.
@@ -183,8 +186,21 @@ class GameViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        emulatorView.setPresentationActive(true)
+        if performanceRecorder == nil {
+            performanceRecorder = PerformanceRecorder(saveRoot: saveRoot, configuredFPS: fpsLimit) { [weak self] in
+                self?.emulatorView.frameStatistics ?? FrameDeliveryStatistics()
+            }
+        }
+        performanceRecorder?.resume()
         requestOrientation()
         startGame()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        emulatorView.stopPresentation()
+        performanceRecorder?.pause()
     }
 
     // ============================================================
@@ -408,6 +424,7 @@ class GameViewController: UIViewController {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let error = self?.runMIDlet()
             DispatchQueue.main.async {
+                self?.performanceRecorder?.finish()
                 KeyInputController.shared.releaseAll()
                 let parent = self?.presentingViewController
                 self?.dismiss(animated: true) {
@@ -463,12 +480,18 @@ class GameViewController: UIViewController {
     }
 
     @objc private func platformPause() {
+        emulatorView.setPresentationActive(false)
+        performanceRecorder?.pause()
         joystickView?.cancelInput()
         KeyInputController.shared.releaseAll()
         j2me_input_post_key(20, 0)
     }
 
-    @objc private func platformResume() { j2me_input_post_key(21, 0) }
+    @objc private func platformResume() {
+        emulatorView.setPresentationActive(true)
+        performanceRecorder?.resume()
+        j2me_input_post_key(21, 0)
+    }
 
     // ============================================================
     // MARK: - View switching

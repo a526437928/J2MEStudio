@@ -10,6 +10,12 @@ import UIKit
 
 class EmulatorView: UIView {
 
+    private nonisolated let frames = LatestFrameBuffer<CGImage>()
+    private var displayLink: CADisplayLink?
+    private var lastPresentedFrame: CGImage?
+    var presentationFPS = 60 { didSet { updatePresentationRate() } }
+    nonisolated var frameStatistics: FrameDeliveryStatistics { frames.snapshot }
+
     // J2ME virtual canvas size
     var canvasWidth: Int = 240
     var canvasHeight: Int = 320
@@ -41,16 +47,55 @@ class EmulatorView: UIView {
     var onFrame: ((CGImage) -> Void)?
 
     /// Update the displayed image from a CGImage.
-    func displayImage(_ cgImage: CGImage) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.layer.contents = cgImage
-            self.onFrame?(cgImage)
-            if let cb = self.onFirstFrame {
-                self.onFirstFrame = nil
-                cb()
-            }
+    nonisolated func displayImage(_ cgImage: CGImage) {
+        guard frames.offer(cgImage) else { return }
+        DispatchQueue.main.async { [weak self] in self?.schedulePresentation() }
+    }
+
+    private func schedulePresentation() {
+        guard frames.hasPendingFrame else { return }
+        if displayLink == nil {
+            let target = FrameDisplayTarget(view: self)
+            let link = CADisplayLink(target: target, selector: #selector(FrameDisplayTarget.tick(_:)))
+            displayLink = link
+            updatePresentationRate()
+            link.add(to: .main, forMode: .common)
         }
+        displayLink?.isPaused = false
+    }
+
+    private func updatePresentationRate() {
+        let maximum = window?.screen.maximumFramesPerSecond ?? 60
+        displayLink?.preferredFramesPerSecond = min(maximum, presentationFPS > 0 ? presentationFPS : maximum)
+    }
+
+    fileprivate func presentLatestFrame(_ link: CADisplayLink) {
+        // Continuous frames share the active display link. Empty take() disarms
+        // its wakeup; a concurrent new offer queues resume after this callback.
+        guard let image = frames.take() else { link.isPaused = true; return }
+        lastPresentedFrame = image
+        layer.contents = image
+        onFrame?(image)
+        if let cb = onFirstFrame {
+            onFirstFrame = nil
+            cb()
+        }
+    }
+
+    func setPresentationActive(_ active: Bool) {
+        frames.setActive(active)
+        if !active { displayLink?.isPaused = true }
+    }
+
+    func stopPresentation() {
+        frames.setActive(false)
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    func diagnosticBurst() {
+        guard let image = lastPresentedFrame else { return }
+        for _ in 0..<1_000 { displayImage(image) }
     }
 
     // ============================================================
@@ -117,6 +162,15 @@ class EmulatorView: UIView {
         let cy = max(0, min(ch - 1, vy))
 
         return (Int(cx), Int(cy))
+    }
+}
+
+@MainActor private final class FrameDisplayTarget: NSObject {
+    weak var view: EmulatorView?
+    init(view: EmulatorView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) {
+        guard let view else { link.invalidate(); return }
+        view.presentLatestFrame(link)
     }
 }
 

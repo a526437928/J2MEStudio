@@ -30,3 +30,5 @@ build/library-tests build/test-fixtures
 swiftc -swift-version 5 J2MEEmulator/PlayPreferences.swift J2MEEmulator/RMSSnapshots.swift \
   tests/PreferencesTests.swift -o build/preferences-tests
 build/preferences-tests
+swiftc -swift-version 5 J2MEEmulator/FrameDelivery.swift tests/FrameDeliveryTests.swift -o build/frame-delivery-tests
+build/frame-delivery-tests

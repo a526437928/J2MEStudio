@@ -13,6 +13,17 @@ final class AnimatedBackgroundView: UIView {
     private let blurView = NeutralBlurView(radius: 40)
     private var circleViews: [UIView] = []
     private var animating = false
+    private var animationsEnabled = true
+
+    func setAnimationsActive(_ active: Bool) {
+        guard active != animationsEnabled else { return }
+        animationsEnabled = active
+        if active {
+            if animating { startAnimations() }
+        } else {
+            for circle in circleViews { circle.layer.removeAllAnimations() }
+        }
+    }
 
     private static let colors: [UIColor] = [
         UIColor(red: 0.15, green: 0.22, blue: 0.55, alpha: 0.38),  // Blue
@@ -69,6 +80,7 @@ final class AnimatedBackgroundView: UIView {
     }
 
     private func startAnimations() {
+        guard animationsEnabled else { return }
         for (i, circle) in circleViews.enumerated() {
             let delay = Double(i) * 1.5
             animateCircle(circle, delay: delay)
@@ -76,6 +88,7 @@ final class AnimatedBackgroundView: UIView {
     }
 
     private func animateCircle(_ circle: UIView, delay: TimeInterval) {
+        guard animationsEnabled else { return }
         let duration = Double.random(in: 10...16)
         let newSize = randomSize()
 
@@ -90,8 +103,9 @@ final class AnimatedBackgroundView: UIView {
                 circle.frame = CGRect(x: x, y: y, width: newSize, height: newSize)
                 circle.layer.cornerRadius = newSize / 2
             },
-            completion: { [weak self] _ in
-                self?.animateCircle(circle, delay: 0)
+            completion: { [weak self] finished in
+                guard finished, let self, self.animationsEnabled else { return }
+                self.animateCircle(circle, delay: 0)
             }
         )
     }

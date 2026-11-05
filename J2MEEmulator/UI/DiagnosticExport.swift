@@ -7,7 +7,7 @@ import UIKit
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("J2ME-Logs-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var files: [URL] = []
-            for name in ["last-session.json", "last-run.log"] {
+            for name in ["last-session.json", "last-run.log", "last-performance.json"] {
                 let source = saveRoot.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: source.path) {
                     let copy = folder.appendingPathComponent(name)

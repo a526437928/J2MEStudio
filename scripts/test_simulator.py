@@ -61,7 +61,7 @@ def main():
     for number, (resource, expected, orientation, scaling, kind) in enumerate(cases, 1):
         save = saves().get(resource + ".jar")
         if save:
-            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json", "diagnostic-capture-done"]:
+            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json", "diagnostic-capture-done", "last-performance.json"]:
                 (save / name).unlink(missing_ok=True)
         other = saves().get("studio_diagnostics_secondary.jar")
         other_hashes = rms_hashes(other) if other else {}
@@ -96,11 +96,19 @@ def main():
                             break
                         result_file = save / "diagnostic-result.json"
                         journal = save / "last-session.json"
-                        if result_file.exists() and journal.exists() and json.loads(journal.read_text()).get("status") == "finished":
+                        performance_file = save / "last-performance.json"
+                        if (result_file.exists() and journal.exists() and json.loads(journal.read_text()).get("status") == "finished"
+                                and performance_file.exists() and json.loads(performance_file.read_text()).get("status") == "finished"):
                             result = json.loads(result_file.read_text())
                             assert result["pass"] and result["launches"] == expected, result
                             assert result["rightKeyCode"] == 54, "Exercise the actual numeric-6 joystick mapping"
                             assert result["diagonalPairs"] == 15 and result["skillKeyPresses"] == 0 and result["heldDirections"] == 0, result
+                            performance = json.loads(performance_file.read_text())
+                            delivery = performance["frameDelivery"]
+                            assert delivery["maxPendingFrames"] == 1 and delivery["received"] >= 1_000 and delivery["replaced"] >= 999, delivery
+                            assert 0 < delivery["presented"] < delivery["received"] and delivery["wakeups"] < delivery["received"], delivery
+                            assert performance["samples"] and all(s["thermalState"] in range(4) and s.get("cpuPercentOfOneCore", 0) >= 0 for s in performance["samples"]), performance
+                            shutil.copyfile(performance_file, ROOT / f"build/logs/{prefix}-performance-{number}.json")
                             geometry = json.loads((save / "diagnostic-input-layout.json").read_text())
                             assert geometry["valid"] and geometry["scaling"] == scaling, geometry
                             assert geometry["orientation"] == orientation + ".", geometry
@@ -108,7 +116,7 @@ def main():
                             text = native.read_text(errors="replace")
                             assert "MIDlet lifecycle complete" in text and "[Studio diagnostics]" in text, "Missing captured JVM logs"
                             shutil.copyfile(native, ROOT / f"build/logs/{prefix}-native-{number}.log")
-                            result.update({"geometry": geometry, "case": kind, "resource": resource})
+                            result.update({"geometry": geometry, "case": kind, "resource": resource, "frameDelivery": delivery})
                             results.append(result)
                             print(f"PASS {prefix} case {number}: {result}", flush=True)
                             break

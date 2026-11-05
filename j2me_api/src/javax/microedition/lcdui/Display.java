@@ -202,11 +202,11 @@ public class Display {
                 }
             }
 
-            // Sleep in short intervals so we react quickly to destroyRequested
+            // Keep the existing ~16 ms input polling period with one sleep.
+            // Four 4 ms sleeps woke the interpreter four times without polling
+            // input between them. Stop/resume still reaches the next iteration.
             try {
-                for (int i = 0; i < 4 && !MIDlet.isDestroyRequested(); i++) {
-                    Thread.sleep(4);
-                }
+                if (!MIDlet.isDestroyRequested()) Thread.sleep(16);
             } catch (InterruptedException e) {
                 break;
             }
