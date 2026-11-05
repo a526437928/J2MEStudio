@@ -119,6 +119,10 @@ class GameViewController: UIViewController {
             emulatorView.onFirstFrame = { [weak self] in
                 self?.placeholderIconView?.isHidden = true
                 if let root = self?.saveRoot {
+                    let layoutOK = self?.numpadView?.diagnosticLayoutIsValid() ?? false
+                    if let data = try? JSONSerialization.data(withJSONObject: ["valid": layoutOK]) {
+                        try? data.write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-input-layout.json"))
+                    }
                     // CI screenshot timing follows a displayed frame, not app-launch time.
                     try? Data([1]).write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-frame-ready"))
                 }

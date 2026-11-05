@@ -23,6 +23,7 @@ class AppsListViewController: UIViewController,
     private var allApps: [AppInfo] = []
     private var scanning = false
     private var smokeStarted = false
+    private var pendingMessage: (String, String)?
 
     /// Directory where imported JARs are stored
     private static var gamesDirectory: String {
@@ -110,6 +111,10 @@ class AppsListViewController: UIViewController,
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if let message = pendingMessage {
+            pendingMessage = nil
+            showMessage(message.0, message.1)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
     }
@@ -154,7 +159,7 @@ class AppsListViewController: UIViewController,
 
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        importGames(urls)
+        controller.dismiss(animated: true) { [weak self] in self?.importGames(urls) }
     }
 
     func importGames(_ urls: [URL]) {
@@ -261,7 +266,7 @@ class AppsListViewController: UIViewController,
     }
 
     private func showMessage(_ title: String, _ message: String) {
-        guard presentedViewController == nil else { return }
+        guard presentedViewController == nil else { pendingMessage = (title, message); return }
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "确定", style: .default))
         present(alert, animated: true)

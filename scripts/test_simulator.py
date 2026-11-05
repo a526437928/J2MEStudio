@@ -42,6 +42,7 @@ def main():
                 save = documents / "Saves" / str(uuid.UUID(game["id"])).upper()
                 (save / "diagnostic-result.json").unlink(missing_ok=True)
                 (save / "diagnostic-frame-ready").unlink(missing_ok=True)
+                (save / "diagnostic-input-layout.json").unlink(missing_ok=True)
         env = {**os.environ, "SIMCTL_CHILD_J2ME_STUDIO_SMOKE_TEST": "1"}
         logpath = ROOT / f"build/logs/simulator-launch-{iteration}.log"
         with logpath.open("w") as log:
@@ -65,6 +66,8 @@ def main():
                             assert result["pass"], result
                             assert result["launches"] == iteration, result
                             assert screenshot, "No screenshot of a displayed game frame"
+                            geometry = json.loads(files[0].with_name("diagnostic-input-layout.json").read_text())
+                            assert geometry["valid"], "UIKit key geometry overlaps or extends outside the keypad"
                             results.append(result)
                             print(f"PASS simulator launch {iteration}: {result}", flush=True)
                             break

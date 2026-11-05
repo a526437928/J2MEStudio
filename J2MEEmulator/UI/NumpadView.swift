@@ -13,6 +13,7 @@ class NumpadView: UIView {
     static let KEY_SOFT_RIGHT: Int32 = -7
 
     private var commandButtons: [UIButton] = []
+    private let commandScroll = UIScrollView()
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
     override init(frame: CGRect) {
@@ -23,6 +24,9 @@ class NumpadView: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func setup() {
+        commandScroll.showsHorizontalScrollIndicator = false
+        commandScroll.accessibilityLabel = "游戏命令，左右滑动查看更多"
+        addSubview(commandScroll)
         let numpad: [(String, Int32)] = [
             ("1", 49), ("2", 50), ("3", 51),
             ("4", 52), ("5", 53), ("6", 54),
@@ -56,7 +60,8 @@ class NumpadView: UIView {
         let gap: CGFloat = 3
 
         let btnW = (w - gap * (cols - 1)) / cols
-        let btnH = (h - gap * (numRows - 1)) / numRows
+        let commandHeight: CGFloat = commandButtons.isEmpty ? 0 : 34
+        let btnH = (h - commandHeight - gap * (numRows - 1)) / numRows
 
         for sub in subviews {
             guard let btn = sub as? UIButton else { continue }
@@ -80,7 +85,7 @@ class NumpadView: UIView {
             }
             btn.frame = CGRect(
                 x: CGFloat(col) * (btnW + gap),
-                y: CGFloat(row) * (btnH + gap),
+                y: commandHeight + CGFloat(row) * (btnH + gap),
                 width: btnW, height: btnH)
         }
 
@@ -108,7 +113,11 @@ class NumpadView: UIView {
         commandButtons.removeAll()
 
         let cmdCount = j2me_ui_get_command_count()
-        guard cmdCount > 0 else { return }
+        guard cmdCount > 0 else {
+            commandScroll.isHidden = true
+            setNeedsLayout()
+            return
+        }
 
         for i in 0..<cmdCount {
             let label = String(cString: j2me_ui_get_command_label(Int32(i)))
@@ -122,25 +131,37 @@ class NumpadView: UIView {
             btn.layer.cornerRadius = 10
             btn.tag = 1000 + Int(cmdId)
             btn.addTarget(self, action: #selector(commandTapped(_:)), for: .touchUpInside)
-            addSubview(btn)
+            commandScroll.addSubview(btn)
             commandButtons.append(btn)
         }
         setNeedsLayout()
     }
 
     private func layoutCommands() {
+        commandScroll.isHidden = commandButtons.isEmpty
         guard !commandButtons.isEmpty else { return }
         let w = bounds.width
-        // Place command buttons below the soft keys, stacked vertically on the right
-        // We'll use a column on the right side
-        let btnW = w * 0.45
-        let btnH: CGFloat = 26
-        let gap: CGFloat = 3
-        // Start from the bottom of the view
-        for (i, btn) in commandButtons.reversed().enumerated() {
-            let y = bounds.height - CGFloat(i + 1) * (btnH + gap)
-            btn.frame = CGRect(x: w - btnW, y: y, width: btnW, height: btnH)
+        commandScroll.frame = CGRect(x: 0, y: 0, width: w, height: 30)
+        var x: CGFloat = 0
+        for btn in commandButtons {
+            let width = min(w, max(64, btn.intrinsicContentSize.width + 16))
+            btn.frame = CGRect(x: x, y: 0, width: width, height: 30)
+            x += width + 4
         }
+        commandScroll.contentSize = CGSize(width: max(w, x), height: 30)
+    }
+
+    /// Used by the simulator harness to assert real UIKit geometry, not a mock.
+    func diagnosticLayoutIsValid() -> Bool {
+        layoutIfNeeded()
+        let keys = subviews.compactMap { $0 as? UIButton }
+        let tolerance = bounds.insetBy(dx: -0.5, dy: -0.5)
+        guard keys.count == 12, keys.allSatisfy({ !$0.frame.isEmpty && tolerance.contains($0.frame) }) else { return false }
+        for (index, key) in keys.enumerated() {
+            if keys.dropFirst(index + 1).contains(where: { $0.frame.intersects(key.frame) }) { return false }
+            if !commandScroll.isHidden && key.frame.intersects(commandScroll.frame) { return false }
+        }
+        return true
     }
 
     @objc private func commandTapped(_ sender: UIButton) {
