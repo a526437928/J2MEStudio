@@ -14,6 +14,7 @@ class EmulatorView: UIView {
     private var displayLink: CADisplayLink?
     private var lastPresentedFrame: CGImage?
     var presentationFPS = 60 { didSet { updatePresentationRate() } }
+    var currentPresentationFPS: Int { displayLink?.preferredFramesPerSecond ?? 0 }
     nonisolated var frameStatistics: FrameDeliveryStatistics { frames.snapshot }
 
     // J2ME virtual canvas size

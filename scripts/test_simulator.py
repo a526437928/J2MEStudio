@@ -66,8 +66,9 @@ def main():
         other = saves().get("studio_diagnostics_secondary.jar")
         other_hashes = rms_hashes(other) if other else {}
         env = {**os.environ, "SIMCTL_CHILD_J2ME_STUDIO_SMOKE_TEST": "1"}
+        fps_limit = 30 if number in [2, 8] else 60
         options = ["--studio-smoke-test", "--studio-fixture=" + resource,
-                   "--play-orientation=" + orientation, "--play-scaling=" + scaling]
+                   "--play-orientation=" + orientation, "--play-scaling=" + scaling, "--play-fps-limit=" + str(fps_limit)]
         if kind == "crash": options.append("--studio-crash-test")
         if kind == "restore": options.append("--studio-restore-latest")
         logpath = ROOT / f"build/logs/{prefix}-launch-{number}.log"
@@ -104,6 +105,7 @@ def main():
                             assert result["rightKeyCode"] == 54, "Exercise the actual numeric-6 joystick mapping"
                             assert result["diagonalPairs"] == 15 and result["skillKeyPresses"] == 0 and result["heldDirections"] == 0, result
                             performance = json.loads(performance_file.read_text())
+                            assert performance["configuredFpsLimit"] == fps_limit and performance["presentationFps"] == fps_limit, performance
                             delivery = performance["frameDelivery"]
                             assert delivery["maxPendingFrames"] == 1 and delivery["received"] >= 1_000 and delivery["replaced"] >= 999, delivery
                             assert 0 < delivery["presented"] < delivery["received"] and delivery["wakeups"] < delivery["received"], delivery
@@ -116,7 +118,7 @@ def main():
                             text = native.read_text(errors="replace")
                             assert "MIDlet lifecycle complete" in text and "[Studio diagnostics]" in text, "Missing captured JVM logs"
                             shutil.copyfile(native, ROOT / f"build/logs/{prefix}-native-{number}.log")
-                            result.update({"geometry": geometry, "case": kind, "resource": resource, "frameDelivery": delivery})
+                            result.update({"geometry": geometry, "case": kind, "resource": resource, "frameDelivery": delivery, "fpsLimit": fps_limit})
                             results.append(result)
                             print(f"PASS {prefix} case {number}: {result}", flush=True)
                             break

@@ -7,6 +7,7 @@ import Darwin
 @MainActor final class PerformanceRecorder {
     private let destination: URL
     private let configuredFPS: Int
+    private let presentationFPS: () -> Int
     private let frames: () -> FrameDeliveryStatistics
     private var timer: Timer?
     private var finished = false
@@ -14,9 +15,10 @@ import Darwin
     private var previousWall = ProcessInfo.processInfo.systemUptime
     private var previousCPU = PerformanceRecorder.cpuSeconds()
 
-    init(saveRoot: String, configuredFPS: Int, frames: @escaping () -> FrameDeliveryStatistics) {
+    init(saveRoot: String, configuredFPS: Int, presentationFPS: @escaping () -> Int, frames: @escaping () -> FrameDeliveryStatistics) {
         destination = URL(fileURLWithPath: saveRoot).appendingPathComponent("last-performance.json")
         self.configuredFPS = configuredFPS
+        self.presentationFPS = presentationFPS
         self.frames = frames
     }
 
@@ -69,6 +71,7 @@ import Darwin
         do {
             let delivery = try JSONSerialization.jsonObject(with: JSONEncoder().encode(frames()))
             let report: [String: Any] = ["version": 1, "status": status, "configuredFpsLimit": configuredFPS,
+                "presentationFps": presentationFPS(),
                 "frameDelivery": delivery, "samples": samples,
                 "cpuAccounting": "Process user + system time; one CPU core = 100%; not device temperature",
                 "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]

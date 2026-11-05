@@ -72,7 +72,12 @@ class GameViewController: UIViewController {
         self.canvasWidth = canvasWidth
         self.canvasHeight = canvasHeight
         self.render3dScale = render3dScale
-        self.fpsLimit = fpsLimit
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--studio-smoke-test"),
+           let option = arguments.first(where: { $0.hasPrefix("--play-fps-limit=") }),
+           let value = Int(option.dropFirst(17)), [0, 15, 20, 30, 60].contains(value) {
+            self.fpsLimit = value
+        } else { self.fpsLimit = fpsLimit }
         self.layoutMode = layoutMode
         super.init(nibName: nil, bundle: nil)
     }
@@ -188,7 +193,8 @@ class GameViewController: UIViewController {
         super.viewDidAppear(animated)
         emulatorView.setPresentationActive(true)
         if performanceRecorder == nil {
-            performanceRecorder = PerformanceRecorder(saveRoot: saveRoot, configuredFPS: fpsLimit) { [weak self] in
+            performanceRecorder = PerformanceRecorder(saveRoot: saveRoot, configuredFPS: fpsLimit,
+                presentationFPS: { [weak self] in self?.emulatorView.currentPresentationFPS ?? 0 }) { [weak self] in
                 self?.emulatorView.frameStatistics ?? FrameDeliveryStatistics()
             }
         }
