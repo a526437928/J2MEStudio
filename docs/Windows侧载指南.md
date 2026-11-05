@@ -1,6 +1,6 @@
 # Windows → iPhone 安装与更新
 
-前提：一次真实 Actions 构建成功，且产物中确实存在 `J2MEStudio-unsigned.ipa`。当前仅建立构建链，尚未生成真实 iOS 安装包。
+前提：一次真实 Actions 构建成功，且产物中确实存在 `J2MEStudio-unsigned.ipa`。[首轮真实构建](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功生成；[下载 Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391216595) 后解压使用 IPA。本地交付 `cloud-build-1/device/J2MEStudio-unsigned.ipa` 为同一真实产物。
 
 ## 下载与辨别产物
 
