@@ -1,0 +1,11 @@
+{
+  "upstream": "https://github.com/ccbkv/J2MEEmulator-iOS",
+  "upstream_commit": "8afc8d808ca22160139333d1d58138c7dca91169",
+  "runtime": {
+    "path": "J2MEEmulator/Resources/jars/minijvm_rt.jar",
+    "sha256": "e2e83f7cf8e042dd4fef94cb073c786b948ce4327ae31699ef09461c0510d791",
+    "mode": "original-vendored-binary",
+    "source_candidate": "https://github.com/digitalgust/miniJVM/tree/47c00ad743e01417b05e09d1a7b0294c5dfb31f3",
+    "source_match_verified": false
+  }
+}

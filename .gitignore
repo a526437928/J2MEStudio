@@ -13,3 +13,10 @@ build/
 .DS_Store
 
 .claude/
+
+# Local Python cache and generated test MIDlet
+__pycache__/
+*.pyc
+J2MEEmulator/Resources/apps/test_midlet.jar
+j2me_api/classes/
+test_midlet/classes/

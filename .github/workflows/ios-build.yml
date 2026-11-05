@@ -1,0 +1,71 @@
+name: iOS unsigned device build
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  device:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.3
+        run: |
+          test -d /Applications/Xcode_26.3.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Source checks and packaging regression tests
+        run: |
+          mkdir -p build/logs
+          set -o pipefail
+          python3 scripts/check_project.py 2>&1 | tee build/logs/source-check.log
+          python3 -m unittest discover -s tests -v 2>&1 | tee build/logs/tests.log
+          bash -n scripts/build_ios.sh j2me_api/build.sh test_midlet/build.sh
+      - name: Compile Java, miniJVM and iOS app; package unsigned IPA
+        id: compile
+        run: bash scripts/build_ios.sh
+      - name: Upload actual build products
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: J2MEStudio-device-${{ github.run_number }}
+          path: build/artifacts/*
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload logs and Xcode diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: J2MEStudio-diagnostics-${{ github.run_number }}
+          path: |
+            build/logs/
+            build/Build.xcresult/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Report verification boundaries
+        if: always()
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          {
+            echo '## Verification status'
+            echo "Build/packaging step: $COMPILE_OUTCOME"
+            if test -f build/artifacts/J2MEStudio-device-app.zip; then echo '- Device .app: built'; else echo '- Device .app: NOT produced'; fi
+            if test -f build/artifacts/J2MEStudio-unsigned.ipa; then echo '- Unsigned IPA: packaged and structure checked'; else echo '- Unsigned IPA: NOT produced'; fi
+            echo '- Signing: NOT performed'
+            echo '- iPhone runtime/compatibility: NOT tested'
+          } >> "$GITHUB_STEP_SUMMARY"
