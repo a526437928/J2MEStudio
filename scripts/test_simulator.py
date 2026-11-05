@@ -61,7 +61,7 @@ def main():
     for number, (resource, expected, orientation, scaling, kind) in enumerate(cases, 1):
         save = saves().get(resource + ".jar")
         if save:
-            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json"]:
+            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json", "diagnostic-capture-done"]:
                 (save / name).unlink(missing_ok=True)
         other = saves().get("studio_diagnostics_secondary.jar")
         other_hashes = rms_hashes(other) if other else {}
@@ -80,8 +80,11 @@ def main():
                     save = saves().get(resource + ".jar")
                     if save:
                         if frame_ready_at is None and (save / "diagnostic-frame-ready").exists(): frame_ready_at = time.monotonic()
-                        if not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
-                            run("io", udid, "screenshot", str(ROOT / f"build/artifacts/{prefix}-{number}-{orientation}-{scaling}.png"))
+                        if kind != "crash" and not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
+                            # The test MIDlet stays on its real Canvas until this
+                            # acknowledgement, even on a cold/slow simulator.
+                            run("io", udid, "screenshot", str(ROOT / f"build/artifacts/{prefix}-{number}-{orientation}-{scaling}.png"), timeout=25)
+                            (save / "diagnostic-capture-done").write_text("captured")
                             screenshot = True
                         native = save / "last-run.log"
                         if kind == "crash" and native.exists() and "[SIGNAL]" in native.read_text(errors="replace"):

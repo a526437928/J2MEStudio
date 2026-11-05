@@ -63,6 +63,12 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
             out.write(json.getBytes("UTF-8")); out.close();
             System.out.println("[Studio diagnostics] " + json);
             if (error.length() > 0) System.out.println("[Studio diagnostics] " + error);
+            // Cold simulator screenshots can take longer than the diagnostic run.
+            // Keep the actual Canvas visible until CI acknowledges its capture.
+            // This branch runs only with the explicit smoke-test JVM property.
+            File captureDone = new File(System.getProperty("app.save.root"), "diagnostic-capture-done");
+            long deadline = System.currentTimeMillis() + 30000;
+            while (!captureDone.exists() && System.currentTimeMillis() < deadline) Thread.sleep(100);
         } catch (Exception e) { e.printStackTrace(); }
         finally { notifyDestroyed(); }
     }
