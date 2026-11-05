@@ -125,6 +125,16 @@ def main():
                     time.sleep(0.5)
                 else: raise RuntimeError(f"No completed diagnostic result; inspect {logpath}")
             finally:
+                # Preserve the app's redirected JVM output and state even when
+                # the diagnostic never finishes. A timeout must be diagnosable.
+                failed_save = saves().get(resource + ".jar")
+                if failed_save:
+                    for name in ["last-run.log", "last-session.json", "last-performance.json", "diagnostic-result.json", "diagnostic-input-layout.json"]:
+                        source = failed_save / name
+                        if source.exists():
+                            shutil.copyfile(source, ROOT / f"build/logs/{prefix}-case-{number}-{name}")
+                if (documents / "library.json").exists():
+                    shutil.copyfile(documents / "library.json", ROOT / f"build/logs/{prefix}-library.json")
                 subprocess.run(["xcrun", "simctl", "terminate", udid, args.bundle], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 process.terminate()
                 try: process.wait(timeout=10)
