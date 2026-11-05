@@ -140,6 +140,8 @@ def main():
                             assert result["pass"] and result["launches"] == expected, result
                             assert result["rightKeyCode"] == 54, "Exercise the actual numeric-6 joystick mapping"
                             assert result["diagonalPairs"] == 15 and result["skillKeyPresses"] == 0 and result["heldDirections"] == 0, result
+                            assert result["fontMetricsOK"] and result["fontChecks"] >= 150 and result["legacyClippingDetected"], result
+                            assert result["exitTextWidth"] > 16, "Chinese menu width must not retain the old 2*8 estimate"
                             performance = json.loads(performance_file.read_text())
                             assert performance["configuredFpsLimit"] == fps_limit and performance["presentationFps"] == fps_limit, performance
                             delivery = performance["frameDelivery"]

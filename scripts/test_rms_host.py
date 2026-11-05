@@ -19,6 +19,7 @@ def main():
                         str(JARS / "j2me_api.jar"), "-d", str(temp),
                         str(ROOT / "tests/HostRmsSmoke.java"), str(ROOT / "tests/HostLifecycleSmoke.java"),
                         str(ROOT / "fixtures/studio_diagnostics/src/StudioDiagnosticsMIDlet.java"),
+                        str(ROOT / "fixtures/studio_diagnostics/src/javax/microedition/lcdui/StudioFontChecks.java"),
                         str(ROOT / "tests/HostDiagnosticInputSmoke.java")], check=True)
         classpath = os.pathsep.join([str(temp), str(JARS / "j2me_api.jar")])
         # Same RMS store name in different save roots; reopen in fresh processes.

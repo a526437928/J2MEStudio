@@ -16,6 +16,58 @@
 #include "jvm_util.h"
 #include <stdio.h>
 #include <stdatomic.h>
+#include <pthread.h>
+
+// Immutable fonts shared by drawing and Font metrics. At most 36 native font
+// objects live for the process; no scratch bitmap contexts or stale JVM handles.
+static pthread_mutex_t g_font_lock = PTHREAD_MUTEX_INITIALIZER;
+static CTFontRef g_fonts[36];
+
+static CGFloat fontPointSize(s32 size) {
+    return size == 8 ? 10.0 : size == 16 ? 18.0 : 14.0;
+}
+
+static CTFontRef copyTextFont(s32 face, s32 style, s32 size) {
+    int faceIndex = face == 32 ? 1 : face == 64 ? 2 : 0;
+    int sizeIndex = size == 8 ? 0 : size == 16 ? 2 : 1;
+    int index = (faceIndex * 4 + (style & 3)) * 3 + sizeIndex;
+    pthread_mutex_lock(&g_font_lock);
+    if (!g_fonts[index]) {
+        // Keep the original family/style mapping, now shared with measurement.
+        CFStringRef name = (style & 1) ? ((style & 2) ? CFSTR("Helvetica-BoldOblique") : CFSTR("Helvetica-Bold"))
+            : (style & 2) ? CFSTR("Helvetica-Oblique") : face == 32 ? CFSTR("Courier") : CFSTR("Helvetica");
+        g_fonts[index] = CTFontCreateWithName(name, fontPointSize(size), NULL);
+    }
+    CTFontRef font = g_fonts[index];
+    if (font) CFRetain(font);
+    pthread_mutex_unlock(&g_font_lock);
+    return font;
+}
+
+static CTLineRef createTextLine(CTFontRef font, CFStringRef string) {
+    const void *keys[] = {kCTFontAttributeName, kCTForegroundColorFromContextAttributeName};
+    const void *values[] = {font, kCFBooleanTrue};
+    CFDictionaryRef attributes = CFDictionaryCreate(NULL, keys, values, 2,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFAttributedStringRef text = CFAttributedStringCreate(NULL, string, attributes);
+    CTLineRef line = CTLineCreateWithAttributedString(text);
+    CFRelease(text); CFRelease(attributes);
+    return line;
+}
+
+static CFStringRef copyJavaText(Runtime *runtime, Instance *string) {
+    Utf8String *utf8 = utf8_create();
+    runtime->jnienv->jstring_2_utf8(string, utf8, runtime);
+    CFStringRef text = CFStringCreateWithBytes(NULL, utf8->data, utf8->length, kCFStringEncodingUTF8, false);
+    utf8_destroy(utf8);
+    return text;
+}
+
+static s32 textFontHeight(CTFontRef font) {
+    return (s32)ceil(CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font));
+}
+
+static s32 textFontAscent(CTFontRef font) { return (s32)ceil(CTFontGetAscent(font)); }
 
 // ============================================================
 // Internal structures
@@ -268,7 +320,7 @@ static RenderContext *createRenderContext(int width, int height) {
 
     rc->fontSize = 14.0;
     rc->fontStyle = 0;
-    rc->font = CTFontCreateWithName(CFSTR("Helvetica"), rc->fontSize, NULL);
+    rc->font = copyTextFont(0, 0, 0);
     rc->ownsPixels = 1;
 
     track_rc(rc);
@@ -587,28 +639,9 @@ static s32 n_setFont(Runtime *runtime, JClass *clazz) {
     s32 size = env->localvar_getInt(runtime->localvar, 4);
     RenderContext *rc = rc_acquire(handle);
     if (rc) {
-        CGFloat ptSize;
-        switch (size) {
-            case 8:  ptSize = 10.0; break;
-            case 0:  ptSize = 14.0; break;
-            case 16: ptSize = 18.0; break;
-            default: ptSize = 14.0; break;
-        }
-
-        CFStringRef fontName;
-        if (style & 1) {
-            if (style & 2) fontName = CFSTR("Helvetica-BoldOblique");
-            else fontName = CFSTR("Helvetica-Bold");
-        } else if (style & 2) {
-            fontName = CFSTR("Helvetica-Oblique");
-        } else {
-            if (face == 32) fontName = CFSTR("Courier");
-            else fontName = CFSTR("Helvetica");
-        }
-
-        CTFontRef newFont = CTFontCreateWithName(fontName, ptSize, NULL);
+        CTFontRef newFont = copyTextFont(face, style, size);
         CTFontRef oldFont = __atomic_exchange_n(&rc->font, newFont, __ATOMIC_ACQ_REL);
-        rc->fontSize = ptSize;
+        rc->fontSize = fontPointSize(size);
         rc->fontStyle = style;
         if (oldFont) CFRelease(oldFont);
     }
@@ -627,30 +660,19 @@ static s32 n_drawString(Runtime *runtime, JClass *clazz) {
 
     if (!rc || !jstr) { rc_release(rc); return RUNTIME_STATUS_NORMAL; }
 
-    Utf8String *ustr = utf8_create();
-    env->jstring_2_utf8(jstr, ustr, runtime);
-    CFStringRef str = CFStringCreateWithCString(NULL, utf8_cstr(ustr), kCFStringEncodingUTF8);
-    utf8_destroy(ustr);
+    CFStringRef str = copyJavaText(runtime, jstr);
     if (!str) { rc_release(rc); return RUNTIME_STATUS_NORMAL; }
 
-    CFMutableDictionaryRef attrs = CFDictionaryCreateMutable(NULL, 3,
-        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFDictionarySetValue(attrs, kCTFontAttributeName, rc->font);
-    CFDictionarySetValue(attrs, kCTForegroundColorFromContextAttributeName, kCFBooleanTrue);
-
-    CFAttributedStringRef attrStr = CFAttributedStringCreate(NULL, str, attrs);
-    CTLineRef line = CTLineCreateWithAttributedString(attrStr);
-
-    CGFloat ascent, descent, leading;
-    double textWidth = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-    CGFloat textHeight = ascent + descent;
+    CTLineRef line = createTextLine(rc->font, str);
+    s32 textWidth = (s32)ceil(CTLineGetTypographicBounds(line, NULL, NULL, NULL));
+    s32 textHeight = textFontHeight(rc->font);
+    s32 ascent = textFontAscent(rc->font);
 
     CGFloat dx = x, dy = y;
     if (anchor & 1) dx -= textWidth / 2;
     if (anchor & 8) dx -= textWidth;
-    if (anchor & 4) dy -= 0;
     if (anchor & 32) dy -= textHeight;
-    if (anchor == 0 || (anchor & 16)) dy += 0;
+    else if (anchor & 64) dy -= ascent;
 
     CGContextSaveGState(rc->ctx);
     CGContextTranslateCTM(rc->ctx, dx, dy + ascent);
@@ -660,8 +682,6 @@ static s32 n_drawString(Runtime *runtime, JClass *clazz) {
     CGContextRestoreGState(rc->ctx);
 
     CFRelease(line);
-    CFRelease(attrStr);
-    CFRelease(attrs);
     CFRelease(str);
     rc_release(rc);
     return RUNTIME_STATUS_NORMAL;
@@ -675,19 +695,12 @@ static s32 n_getStringWidth(Runtime *runtime, JClass *clazz) {
 
     if (!rc || !jstr) { rc_release(rc); env->push_int(runtime->stack, 0); return RUNTIME_STATUS_NORMAL; }
 
-    Utf8String *ustr = utf8_create();
-    env->jstring_2_utf8(jstr, ustr, runtime);
-    CFStringRef str = CFStringCreateWithCString(NULL, utf8_cstr(ustr), kCFStringEncodingUTF8);
-    utf8_destroy(ustr);
+    CFStringRef str = copyJavaText(runtime, jstr);
     if (!str) { rc_release(rc); env->push_int(runtime->stack, 0); return RUNTIME_STATUS_NORMAL; }
 
-    CFMutableDictionaryRef attrs = CFDictionaryCreateMutable(NULL, 1,
-        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFDictionarySetValue(attrs, kCTFontAttributeName, rc->font);
-    CFAttributedStringRef attrStr = CFAttributedStringCreate(NULL, str, attrs);
-    CTLineRef line = CTLineCreateWithAttributedString(attrStr);
+    CTLineRef line = createTextLine(rc->font, str);
     double w = CTLineGetTypographicBounds(line, NULL, NULL, NULL);
-    CFRelease(line); CFRelease(attrStr); CFRelease(attrs); CFRelease(str);
+    CFRelease(line); CFRelease(str);
     rc_release(rc);
     env->push_int(runtime->stack, (s32)ceil(w));
     return RUNTIME_STATUS_NORMAL;
@@ -698,10 +711,9 @@ static s32 n_getFontHeight(Runtime *runtime, JClass *clazz) {
     s64 handle = env->localvar_getLong_2slot(runtime->localvar, 0);
     RenderContext *rc = rc_acquire(handle);
     if (!rc) { env->push_int(runtime->stack, 14); return RUNTIME_STATUS_NORMAL; }
-    CGFloat ascent = CTFontGetAscent(rc->font);
-    CGFloat descent = CTFontGetDescent(rc->font);
+    s32 height = textFontHeight(rc->font);
     rc_release(rc);
-    env->push_int(runtime->stack, (s32)ceil(ascent + descent));
+    env->push_int(runtime->stack, height);
     return RUNTIME_STATUS_NORMAL;
 }
 
@@ -710,11 +722,40 @@ static s32 n_getFontAscent(Runtime *runtime, JClass *clazz) {
     s64 handle = env->localvar_getLong_2slot(runtime->localvar, 0);
     RenderContext *rc = rc_acquire(handle);
     if (!rc) { env->push_int(runtime->stack, 12); return RUNTIME_STATUS_NORMAL; }
-    CGFloat ascent = CTFontGetAscent(rc->font);
+    s32 ascent = textFontAscent(rc->font);
     rc_release(rc);
-    env->push_int(runtime->stack, (s32)ceil(ascent));
+    env->push_int(runtime->stack, ascent);
     return RUNTIME_STATUS_NORMAL;
 }
+
+static s32 n_measureStringWidth(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    Instance *jstr = env->localvar_getRefer(runtime->localvar, 3);
+    if (!jstr) { env->push_int(runtime->stack, 0); return RUNTIME_STATUS_NORMAL; }
+    CTFontRef font = copyTextFont(env->localvar_getInt(runtime->localvar, 0),
+        env->localvar_getInt(runtime->localvar, 1), env->localvar_getInt(runtime->localvar, 2));
+    CFStringRef string = copyJavaText(runtime, jstr);
+    s32 width = 0;
+    if (string) {
+        CTLineRef line = createTextLine(font, string);
+        width = (s32)ceil(CTLineGetTypographicBounds(line, NULL, NULL, NULL));
+        CFRelease(line); CFRelease(string);
+    }
+    CFRelease(font);
+    env->push_int(runtime->stack, width);
+    return RUNTIME_STATUS_NORMAL;
+}
+
+static s32 measureFontMetric(Runtime *runtime, int ascent) {
+    JniEnv *env = runtime->jnienv;
+    CTFontRef font = copyTextFont(env->localvar_getInt(runtime->localvar, 0),
+        env->localvar_getInt(runtime->localvar, 1), env->localvar_getInt(runtime->localvar, 2));
+    s32 value = ascent ? textFontAscent(font) : textFontHeight(font);
+    CFRelease(font); env->push_int(runtime->stack, value);
+    return RUNTIME_STATUS_NORMAL;
+}
+static s32 n_measureFontHeight(Runtime *runtime, JClass *clazz) { return measureFontMetric(runtime, 0); }
+static s32 n_measureFontAscent(Runtime *runtime, JClass *clazz) { return measureFontMetric(runtime, 1); }
 
 // --- Image ---
 
@@ -777,7 +818,7 @@ static s32 n_getImageContext(Runtime *runtime, JClass *clazz) {
         rc->width = img->width;
         rc->height = img->height;
         rc->fontSize = 14.0;
-        rc->font = CTFontCreateWithName(CFSTR("Helvetica"), 14.0, NULL);
+        rc->font = copyTextFont(0, 0, 0);
         rc->ownsPixels = 0; // pixels owned by the RenderImage, not this wrapper
         track_rc(rc);
         img_release(img);
@@ -1194,6 +1235,9 @@ static java_native_method j2me_render_methods[] = {
     {CLS, "getStringWidth",   "(JLjava/lang/String;)I",                  n_getStringWidth},
     {CLS, "getFontHeight",    "(J)I",                                    n_getFontHeight},
     {CLS, "getFontAscent",    "(J)I",                                    n_getFontAscent},
+    {CLS, "measureStringWidth", "(IIILjava/lang/String;)I",               n_measureStringWidth},
+    {CLS, "measureFontHeight", "(III)I",                                 n_measureFontHeight},
+    {CLS, "measureFontAscent", "(III)I",                                 n_measureFontAscent},
 
     // Image
     {CLS, "createMutableImage",  "(II)J",                                n_createMutableImage},

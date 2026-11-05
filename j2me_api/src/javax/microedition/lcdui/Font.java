@@ -18,10 +18,13 @@ public class Font {
     public static final int SIZE_MEDIUM = 0;
     public static final int SIZE_LARGE = 16;
 
-    private int face, style, size;
-    // Cached metrics — lazily computed via native context
-    private int cachedHeight = -1;
-    private int cachedAscent = -1;
+    private final int face, style, size;
+    private static final Font[] fonts = new Font[72];
+    private volatile int cachedHeight = -1;
+    private volatile int cachedAscent = -1;
+    private String[] widthTexts;
+    private int[] widths;
+    private int nextWidth;
 
     private Font(int face, int style, int size) {
         this.face = face;
@@ -29,12 +32,18 @@ public class Font {
         this.size = size;
     }
 
-    public static Font getFont(int face, int style, int size) {
-        return new Font(face, style, size);
+    public static synchronized Font getFont(int face, int style, int size) {
+        int faceIndex = face == FACE_SYSTEM ? 0 : face == FACE_MONOSPACE ? 1 : face == FACE_PROPORTIONAL ? 2 : -1;
+        int sizeIndex = size == SIZE_SMALL ? 0 : size == SIZE_MEDIUM ? 1 : size == SIZE_LARGE ? 2 : -1;
+        // Preserve the existing fallback for nonstandard vendor parameters.
+        if (faceIndex < 0 || sizeIndex < 0 || style < 0 || style > 7) return new Font(face, style, size);
+        int index = (faceIndex * 8 + style) * 3 + sizeIndex;
+        if (fonts[index] == null) fonts[index] = new Font(face, style, size);
+        return fonts[index];
     }
 
     public static Font getDefaultFont() {
-        return new Font(FACE_SYSTEM, STYLE_PLAIN, SIZE_MEDIUM);
+        return getFont(FACE_SYSTEM, STYLE_PLAIN, SIZE_MEDIUM);
     }
 
     public int getFace() { return face; }
@@ -47,17 +56,30 @@ public class Font {
     public boolean isUnderlined() { return (style & STYLE_UNDERLINED) != 0; }
 
     public int getHeight() {
-        return cachedHeight >= 0 ? cachedHeight : 16; // fallback
+        if (cachedHeight < 0) cachedHeight = NativeBridge.measureFontHeight(face, style, size);
+        return cachedHeight;
     }
 
     public int getBaselinePosition() {
-        return cachedAscent >= 0 ? cachedAscent : 13; // fallback
+        if (cachedAscent < 0) cachedAscent = NativeBridge.measureFontAscent(face, style, size);
+        return cachedAscent;
     }
 
-    public int stringWidth(String str) {
-        // Need a context to measure — use temporary approach
-        // Graphics will call applyToContext which caches metrics
-        return str.length() * 8; // rough fallback
+    public synchronized int stringWidth(String str) {
+        if (str == null) throw new NullPointerException();
+        if (str.length() == 0) return 0;
+        if (widthTexts != null) {
+            for (int i = 0; i < widthTexts.length; i++) if (str.equals(widthTexts[i])) return widths[i];
+        }
+        int width = NativeBridge.measureStringWidth(face, style, size, str);
+        // Bounded per-font cache, so repeated HUD/menu labels need no new
+        // CoreText layout each frame and large strings are not retained.
+        if (str.length() <= 128) {
+            if (widthTexts == null) { widthTexts = new String[16]; widths = new int[16]; }
+            widthTexts[nextWidth] = str; widths[nextWidth] = width;
+            nextWidth = (nextWidth + 1) % widthTexts.length;
+        }
+        return width;
     }
 
     public int charWidth(char ch) {
@@ -73,13 +95,11 @@ public class Font {
     }
 
     /**
-     * Apply this font to a native context and cache metrics.
+     * Apply this immutable font to a native drawing context.
      * Called by Graphics when font changes.
      */
     void applyToContext(long ctx) {
         NativeBridge.setFont(ctx, face, style, size);
-        cachedHeight = NativeBridge.getFontHeight(ctx);
-        cachedAscent = NativeBridge.getFontAscent(ctx);
     }
 
     /**

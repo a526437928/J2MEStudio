@@ -31,6 +31,10 @@ public class NativeBridge {
     public static native int getStringWidth(long ctx, String str);
     public static native int getFontHeight(long ctx);
     public static native int getFontAscent(long ctx);
+    // Context-independent metrics for Font calls before/without Graphics.setFont.
+    public static native int measureStringWidth(int face, int style, int size, String str);
+    public static native int measureFontHeight(int face, int style, int size);
+    public static native int measureFontAscent(int face, int style, int size);
 
     // Image
     public static native long createMutableImage(int w, int h);

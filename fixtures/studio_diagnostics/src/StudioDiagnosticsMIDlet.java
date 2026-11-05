@@ -50,10 +50,13 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
 
     public void run() {
         try {
+            long firstPaintDeadline = System.currentTimeMillis() + 15000;
+            while (canvas.paints == 0 && System.currentTimeMillis() < firstPaintDeadline) Thread.sleep(10);
             Thread.sleep(5000);
             boolean pass = rmsOK && canvas.paints > 0 && canvas.combo && canvas.pressed >= 2
                 && canvas.released >= 2 && canvas.repeated > 0 && canvas.directionAfterFive && starts >= 2 && pauses >= 1
-                && canvas.diagonalPairs == 15 && canvas.skillKeyPresses == 0 && canvas.heldDirections == 0;
+                && canvas.diagonalPairs == 15 && canvas.skillKeyPresses == 0 && canvas.heldDirections == 0
+                && canvas.fontMetricsOK && StudioFontChecks.legacyClippingDetected;
             String json = "{\"pass\":" + pass + ",\"launches\":" + launches
                 + ",\"rms\":" + rmsOK + ",\"paints\":" + canvas.paints
                 + ",\"pressed\":" + canvas.pressed + ",\"released\":" + canvas.released
@@ -62,11 +65,15 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
                 + ",\"diagonalPairs\":" + canvas.diagonalPairs + ",\"skillKeyPresses\":" + canvas.skillKeyPresses
                 + ",\"heldDirections\":" + canvas.heldDirections
                 + ",\"directionAfterFive\":" + canvas.directionAfterFive
-                + ",\"starts\":" + starts + ",\"pauses\":" + pauses + "}";
+                + ",\"starts\":" + starts + ",\"pauses\":" + pauses
+                + ",\"fontMetricsOK\":" + canvas.fontMetricsOK + ",\"fontChecks\":" + StudioFontChecks.checks
+                + ",\"legacyClippingDetected\":" + StudioFontChecks.legacyClippingDetected
+                + ",\"exitTextWidth\":" + StudioFontChecks.exitWidth + "}";
             FileOutputStream out = new FileOutputStream(System.getProperty("app.save.root") + "/diagnostic-result.json");
             out.write(json.getBytes("UTF-8")); out.close();
             System.out.println("[Studio diagnostics] " + json);
             if (error.length() > 0) System.out.println("[Studio diagnostics] " + error);
+            if (StudioFontChecks.error.length() > 0) System.out.println("[Studio diagnostics font] " + StudioFontChecks.error);
             // Cold simulator screenshots can take longer than the diagnostic run.
             // Keep the actual Canvas visible until CI acknowledges its capture.
             // This branch runs only with the explicit smoke-test JVM property.
@@ -83,8 +90,14 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
         volatile int diagonalPairs, skillKeyPresses, heldDirections;
         volatile boolean right, five, combo, fiveWasReleased, directionAfterFive;
         private int directionSources;
+        private boolean fontChecksDone;
+        volatile boolean fontMetricsOK;
         private String lastKey = "请按方向键、数字键和软键";
         protected void paint(Graphics graphics) {
+            if (!fontChecksDone) {
+                fontMetricsOK = StudioFontChecks.run();
+                fontChecksDone = true;
+            }
             graphics.setColor(0x102030); graphics.fillRect(0, 0, getWidth(), getHeight());
             graphics.setFont(Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_MEDIUM));
             graphics.setColor(0xffffff);
@@ -96,6 +109,15 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
                 "退出重开，存档次数应加一",
                 "技能数字键：" + skillKeyPresses};
             for (int i = 0; i < lines.length; i++) graphics.drawString(lines[i], 8, 8 + i * 25, Graphics.TOP | Graphics.LEFT);
+            Font menuFont = Font.getDefaultFont();
+            graphics.setFont(menuFont);
+            int barTop = getHeight() - menuFont.getHeight() - 4;
+            graphics.setColor(0xc0c0c0); graphics.fillRect(0, barTop, getWidth(), getHeight() - barTop);
+            graphics.setColor(0);
+            graphics.drawString("选择", 2, barTop + 2, Graphics.TOP | Graphics.LEFT);
+            // Deliberately use the pattern used by legacy games, rather than
+            // bypassing Font.stringWidth with the native RIGHT anchor.
+            graphics.drawString("退出", getWidth() - 2 - menuFont.stringWidth("退出"), barTop + 2, Graphics.TOP | Graphics.LEFT);
             paints++;
         }
         protected void keyPressed(int code) {
