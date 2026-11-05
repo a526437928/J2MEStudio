@@ -14,6 +14,7 @@ class JoystickView: UIView {
     private let thumbView = UIView()
 
     private var activeCode: Int32 = 0
+    var isEditingLayout = false
 
     /// Dead zone as fraction of base radius (no key press within this range)
     private let deadZoneRatio: CGFloat = 0.25
@@ -95,12 +96,14 @@ class JoystickView: UIView {
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !isEditingLayout else { return }
         guard let pt = touches.first?.location(in: self) else { return }
         thumbView.alpha = 1
         update(at: pt)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !isEditingLayout else { return }
         guard let pt = touches.first?.location(in: self) else { return }
         update(at: pt)
     }

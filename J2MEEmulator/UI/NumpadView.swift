@@ -15,6 +15,18 @@ class NumpadView: UIView {
     private var commandButtons: [UIButton] = []
     private let commandScroll = UIScrollView()
     private let haptic = UIImpactFeedbackGenerator(style: .light)
+    var editedKeys: [String: ControlPlacement] = [:] { didSet { setNeedsLayout() } }
+    var onKeyLayoutChange: (([String: ControlPlacement]) -> Void)?
+    var editingKeys = false {
+        didSet {
+            commandScroll.isUserInteractionEnabled = !isEditingLayout
+            for key in subviews.compactMap({ $0 as? UIButton }) {
+                key.gestureRecognizers?.forEach { $0.isEnabled = editingKeys }
+            }
+        }
+    }
+    var isEditingLayout = false { didSet { commandScroll.isUserInteractionEnabled = !isEditingLayout } }
+    private var gestureOriginal: CGRect = .zero
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -43,6 +55,11 @@ class NumpadView: UIView {
             btn.layer.borderColor = UIColor(white: 1, alpha: 0.12).cgColor
             btn.layer.borderWidth = 1
             btn.tag = Int(code)
+            btn.isMultipleTouchEnabled = true
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(editPan(_:)))
+            pan.maximumNumberOfTouches = 1; pan.isEnabled = false; btn.addGestureRecognizer(pan)
+            let pinch = UIPinchGestureRecognizer(target: self, action: #selector(editPinch(_:)))
+            pinch.isEnabled = false; btn.addGestureRecognizer(pinch)
             btn.addTarget(self, action: #selector(down(_:)), for: .touchDown)
             btn.addTarget(self, action: #selector(up(_:)),
                           for: [.touchUpInside, .touchUpOutside, .touchCancel])
@@ -87,6 +104,12 @@ class NumpadView: UIView {
                 x: CGFloat(col) * (btnW + gap),
                 y: commandHeight + CGFloat(row) * (btnH + gap),
                 width: btnW, height: btnH)
+            if let custom = editedKeys[String(code)] {
+                let size = CGSize(width: btnW * CGFloat(custom.scale), height: btnH * CGFloat(custom.scale))
+                let frame = CGRect(x: bounds.width * custom.x - size.width / 2,
+                    y: bounds.height * custom.y - size.height / 2, width: size.width, height: size.height)
+                btn.frame = PlayGeometry.clamp(frame, to: CGRect(x: 0, y: commandHeight, width: w, height: h - commandHeight))
+            }
         }
 
         layoutCommands()
@@ -95,6 +118,7 @@ class NumpadView: UIView {
     // MARK: - Key events with repeat
 
     @objc private func down(_ sender: UIButton) {
+        guard !isEditingLayout else { return }
         let code = Int32(sender.tag)
         haptic.impactOccurred(intensity: 0.6)
         KeyInputController.shared.press(code)
@@ -102,6 +126,7 @@ class NumpadView: UIView {
     }
 
     @objc private func up(_ sender: UIButton) {
+        guard !isEditingLayout else { return }
         KeyInputController.shared.release(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.12, alpha: 1)
     }
@@ -165,6 +190,31 @@ class NumpadView: UIView {
     }
 
     @objc private func commandTapped(_ sender: UIButton) {
+        guard !isEditingLayout else { return }
         j2me_input_post_key(Int32(J2ME_UI_COMMAND_ACTION), Int32(sender.tag - 1000))
+    }
+
+    @objc private func editPan(_ gesture: UIPanGestureRecognizer) {
+        guard editingKeys, let button = gesture.view as? UIButton else { return }
+        if gesture.state == .began { gestureOriginal = button.frame }
+        let shift = gesture.translation(in: self)
+        button.frame = PlayGeometry.clamp(gestureOriginal.offsetBy(dx: shift.x, dy: shift.y),
+            to: CGRect(x: 0, y: commandButtons.isEmpty ? 0 : 34, width: bounds.width, height: bounds.height - (commandButtons.isEmpty ? 0 : 34)))
+        remember(button, scale: editedKeys[String(button.tag)]?.scale ?? 1)
+    }
+
+    @objc private func editPinch(_ gesture: UIPinchGestureRecognizer) {
+        guard editingKeys, let button = gesture.view as? UIButton else { return }
+        let old = editedKeys[String(button.tag)]?.scale ?? 1
+        remember(button, scale: min(1.4, max(0.6, old * Double(gesture.scale))))
+        gesture.scale = 1
+        setNeedsLayout()
+    }
+
+    private func remember(_ button: UIButton, scale: Double) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        editedKeys[String(button.tag)] = ControlPlacement(x: Double(button.frame.midX / bounds.width),
+            y: Double(button.frame.midY / bounds.height), scale: scale)
+        onKeyLayoutChange?(editedKeys)
     }
 }

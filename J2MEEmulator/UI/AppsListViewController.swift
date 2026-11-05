@@ -412,14 +412,44 @@ class AppsListViewController: UIViewController,
                                   image: UIImage(systemName: "gauge.with.needle"),
                                   children: fpsActions)
 
-            let settings = UIMenu(options: .displayInline, children: [toggle3D, resMenu, fpsMenu])
+            let store = PlayPreferenceStore(url: URL(fileURLWithPath: app.saveRoot).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Configurations").appendingPathComponent(app.record.id.uuidString + ".json"))
+            let preference = (try? store.load()) ?? PlayPreferences()
+            let orientation = UIMenu(title: "显示方向", children: zip(PlayPreferences.Orientation.allCases, ["自动旋转", "竖屏", "横屏"]).map { mode, label in
+                UIAction(title: label, state: preference.orientation == mode ? .on : .off) { _ in
+                    do { var value = try store.load(); value.orientation = mode; try store.save(value) }
+                    catch { self?.showMessage("配置未保存", error.localizedDescription) }
+                }
+            })
+            let scaling = UIMenu(title: "像素缩放", children: zip(PlayPreferences.Scaling.allCases, ["保持比例适应", "整数倍像素", "原始像素"]).map { mode, label in
+                UIAction(title: label, state: preference.scaling == mode ? .on : .off) { _ in
+                    do { var value = try store.load(); value.scaling = mode; try store.save(value) }
+                    catch { self?.showMessage("配置未保存", error.localizedDescription) }
+                }
+            })
+            let settings = UIMenu(options: .displayInline, children: [toggle3D, resMenu, fpsMenu, orientation, scaling])
             let actions = UIMenu(options: .displayInline, children: [clearData, delete])
             let journal = UIAction(title: "查看运行记录", image: UIImage(systemName: "doc.text")) { _ in
                 let url = URL(fileURLWithPath: app.saveRoot).appendingPathComponent("last-session.json")
                 let message = (try? String(contentsOf: url, encoding: .utf8)) ?? "尚无运行记录。"
                 self?.showMessage("运行记录", message + "\n\nrunning 表示未记录正常结束，可能是系统终止或崩溃；这不是完整系统崩溃报告。")
             }
-            var children: [UIMenuElement] = [settings, journal, actions]
+            let export = UIAction(title: "导出运行日志", image: UIImage(systemName: "square.and.arrow.up")) { _ in
+                guard let self else { return }; DiagnosticExport.present(saveRoot: URL(fileURLWithPath: app.saveRoot), from: self)
+            }
+            let backup = UIAction(title: "备份 RMS 存档", image: UIImage(systemName: "externaldrive")) { _ in
+                self?.performLibraryAction { _ in _ = try RMSSnapshots(saveRoot: URL(fileURLWithPath: app.saveRoot)).create() }
+            }
+            let restore = UIAction(title: "恢复最近的 RMS 备份", image: UIImage(systemName: "arrow.uturn.backward")) { _ in
+                guard let self else { return }
+                let alert = UIAlertController(title: "恢复备份", message: "恢复此游戏最近一次启动前的存档？当前 RMS 会先备份，其他游戏不受影响。", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+                alert.addAction(UIAlertAction(title: "恢复", style: .default) { _ in
+                    self.performLibraryAction { _ in try RMSSnapshots(saveRoot: URL(fileURLWithPath: app.saveRoot)).restoreLatest() }
+                })
+                self.present(alert, animated: true)
+            }
+            var children: [UIMenuElement] = [settings, journal, export, backup, restore, actions]
             if let message = app.record.migrationNotice {
                 children.append(UIAction(title: "旧存档迁移提示", image: UIImage(systemName: "exclamationmark.triangle")) { _ in
                     self?.showMessage("旧存档迁移提示", message)

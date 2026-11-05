@@ -27,3 +27,6 @@ PY
 swiftc -swift-version 5 J2MEEmulator/GameLibrary.swift J2MEEmulator/JARMetadata.swift \
   tests/LibraryTests.swift -o build/library-tests
 build/library-tests build/test-fixtures
+swiftc -swift-version 5 J2MEEmulator/PlayPreferences.swift J2MEEmulator/RMSSnapshots.swift \
+  tests/PreferencesTests.swift -o build/preferences-tests
+build/preferences-tests

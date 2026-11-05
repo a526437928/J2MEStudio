@@ -29,6 +29,7 @@ class EmulatorView: UIView {
         layer.magnificationFilter = .nearest
         layer.minificationFilter = .nearest
         contentMode = .scaleAspectFit
+        layer.contentsGravity = .resizeAspect
         isMultipleTouchEnabled = true
         isUserInteractionEnabled = true
     }

@@ -6,6 +6,7 @@
 #include "NativeBridge/j2me_input.h"
 #include "NativeBridge/j2me_ui.h"
 #include "NativeBridge/j2me_audio.h"
+#include "NativeBridge/session_log.h"
 
 // Getters for Form/List/Alert data built by j2me_ui.m
 const char *j2me_ui_get_form_title(void);

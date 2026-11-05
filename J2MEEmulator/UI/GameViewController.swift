@@ -12,8 +12,7 @@ import UIKit
 
 enum GameLayoutMode {
     case ngage      // Landscape: D-pad left, screen center, numpad right
-    // Future: .classic   — Portrait: screen top, keyboard bottom
-    // Future: .fullscreen — Landscape: screen fills, overlay controls
+    case adaptive
 }
 
 // MARK: - GameViewController
@@ -45,12 +44,25 @@ class GameViewController: UIViewController {
     private var joystickView: JoystickView?
     private var numpadView: NumpadView?
     private var hasStarted = false
+    private var preferences = PlayPreferences()
+    private let settingsButton = UIButton(type: .system)
+    private let editorHint = UILabel()
+    private var editingLayout = false
+    private var editingIndividualKeys = false
+    private var controlPans: [UIPanGestureRecognizer] = []
+    private var dragStart: CGPoint = .zero
+    private var lastSize: CGSize = .zero
+    private var preferenceStore: PlayPreferenceStore {
+        PlayPreferenceStore(url: URL(fileURLWithPath: saveRoot).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Configurations").appendingPathComponent(URL(fileURLWithPath: jarPath).deletingPathExtension().lastPathComponent + ".json"))
+    }
+    private var layoutPrefix: String { view.bounds.width > view.bounds.height ? "landscape." : "portrait." }
 
     init(jarPath: String, appName: String, appIcon: UIImage,
          saveRoot: String,
          canvasWidth: Int = 240, canvasHeight: Int = 320,
          render3dScale: Int = 3, fpsLimit: Int = 0,
-         layoutMode: GameLayoutMode = .ngage) {
+         layoutMode: GameLayoutMode = .adaptive) {
         self.jarPath = jarPath
         self.appName = appName
         self.appIcon = appIcon
@@ -76,8 +88,10 @@ class GameViewController: UIViewController {
     override var prefersStatusBarHidden: Bool { true }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        switch layoutMode {
-        case .ngage: return .landscape
+        switch preferences.orientation {
+        case .automatic: return .allButUpsideDown
+        case .portrait: return .portrait
+        case .landscape: return .landscape
         }
     }
 
@@ -88,19 +102,18 @@ class GameViewController: UIViewController {
         emulatorView.canvasWidth = canvasWidth
         emulatorView.canvasHeight = canvasHeight
 
-        switch layoutMode {
-        case .ngage: setupNGageLayout()
+        do { preferences = try preferenceStore.load() }
+        catch { print("[Settings] Preserved unreadable configuration: \(error)") }
+        for arg in ProcessInfo.processInfo.arguments {
+            if arg.hasPrefix("--play-orientation="), let v = PlayPreferences.Orientation(rawValue: String(arg.dropFirst(19))) { preferences.orientation = v }
+            if arg.hasPrefix("--play-scaling="), let v = PlayPreferences.Scaling(rawValue: String(arg.dropFirst(15))) { preferences.scaling = v }
         }
+        setupAdaptiveLayout()
 
         // Placeholder icon — visible until first game frame
         let iconIV = UIImageView(image: appIcon)
         iconIV.contentMode = .center
-        iconIV.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(iconIV)
-        NSLayoutConstraint.activate([
-            iconIV.centerXAnchor.constraint(equalTo: emulatorView.centerXAnchor),
-            iconIV.centerYAnchor.constraint(equalTo: emulatorView.centerYAnchor),
-        ])
         placeholderIconView = iconIV
         view.bringSubviewToFront(backButton)
 
@@ -119,10 +132,7 @@ class GameViewController: UIViewController {
             emulatorView.onFirstFrame = { [weak self] in
                 self?.placeholderIconView?.isHidden = true
                 if let root = self?.saveRoot {
-                    let layoutOK = self?.numpadView?.diagnosticLayoutIsValid() ?? false
-                    if let data = try? JSONSerialization.data(withJSONObject: ["valid": layoutOK]) {
-                        try? data.write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-input-layout.json"))
-                    }
+                    self?.writeDiagnosticGeometry()
                     // CI screenshot timing follows a displayed frame, not app-launch time.
                     try? Data([1]).write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-frame-ready"))
                 }
@@ -158,6 +168,7 @@ class GameViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        requestOrientation()
         startGame()
     }
 
@@ -176,160 +187,197 @@ class GameViewController: UIViewController {
     //  │  └─────────┘  └──────────────┘  └───────────────┘  │
     //  └──────────────────────────────────────────────────────┘
 
-    private func setupNGageLayout() {
-        let joystick = JoystickView()
-        let numpad = NumpadView()
-        self.joystickView = joystick
-        self.numpadView = numpad
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        preferences.orientation == .landscape ? .landscapeRight : .portrait
+    }
 
-        // Glow: container with game content mirror + NeutralBlurView on top
+    private func setupAdaptiveLayout() {
+        let joystick = JoystickView(); let numpad = NumpadView()
+        joystickView = joystick; numpadView = numpad
         glowContainer.isUserInteractionEnabled = false
-        glowContainer.clipsToBounds = true
-
-        glowContentView.layer.magnificationFilter = .trilinear
-        glowContentView.layer.minificationFilter = .trilinear
-        glowContentView.alpha = 0.6
+        glowContentView.isUserInteractionEnabled = false
         glowContainer.addSubview(glowContentView)
-
-        // glowContentView fills glowContainer
-        glowContentView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            glowContentView.topAnchor.constraint(equalTo: glowContainer.topAnchor),
-            glowContentView.leadingAnchor.constraint(equalTo: glowContainer.leadingAnchor),
-            glowContentView.trailingAnchor.constraint(equalTo: glowContainer.trailingAnchor),
-            glowContentView.bottomAnchor.constraint(equalTo: glowContainer.bottomAnchor),
-        ])
-
-        // Full-screen blur over the glow (no hard edge)
-        let glowBlur = NeutralBlurView(radius: 100)
-        glowBlur.isUserInteractionEnabled = false
-
-        for v: UIView in [glowContainer, glowBlur, joystick, emulatorView, numpad, lskButton, rskButton, formView, listView, backButton] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(v)
-        }
-
-        formView.isHidden = true
-        listView.isHidden = true
-
-        // Soft keys — flanking the game screen at bottom
-        for (btn, title) in [(lskButton, "左软键"), (rskButton, "右软键")] {
-            btn.setTitle(title, for: .normal)
-            btn.titleLabel?.font = .systemFont(ofSize: 18, weight: .medium)
-            btn.setTitleColor(.white, for: .normal)
-            btn.backgroundColor = UIColor(white: 0.12, alpha: 1)
-            btn.layer.cornerRadius = 10
-            btn.layer.borderColor = UIColor(white: 1, alpha: 0.12).cgColor
-            btn.layer.borderWidth = 1
-            btn.addTarget(self, action: #selector(softKeyDown(_:)), for: .touchDown)
-            btn.addTarget(self, action: #selector(softKeyUp(_:)),
-                          for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        }
-        lskButton.tag = -6
-        rskButton.tag = -7
-
-        // Back button
-        backButton.setTitle("  \u{2715}  ", for: .normal)
-        backButton.titleLabel?.font = .systemFont(ofSize: 20, weight: .medium)
-        backButton.backgroundColor = UIColor(white: 0.15, alpha: 0.85)
-        backButton.setTitleColor(.white, for: .normal)
-        backButton.layer.cornerRadius = 10
-        backButton.layer.borderColor = UIColor(white: 1, alpha: 0.12).cgColor
-        backButton.layer.borderWidth = 1
-        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-
-        let canvasRatio: CGFloat = CGFloat(emulatorView.canvasWidth) / CGFloat(emulatorView.canvasHeight)
-        let pad: CGFloat = 8
-
-        // Layout guides for centering controls in the side panels
-        let leftArea = UILayoutGuide()
-        let rightArea = UILayoutGuide()
-        view.addLayoutGuide(leftArea)
-        view.addLayoutGuide(rightArea)
-
-        NSLayoutConstraint.activate([
-            leftArea.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            leftArea.trailingAnchor.constraint(equalTo: emulatorView.leadingAnchor),
-
-            rightArea.leadingAnchor.constraint(equalTo: emulatorView.trailingAnchor),
-            rightArea.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            // Glow content: slightly larger than emulator, sits behind it
-            glowContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            glowContainer.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            glowContainer.widthAnchor.constraint(equalTo: emulatorView.widthAnchor),
-            glowContainer.heightAnchor.constraint(equalTo: emulatorView.heightAnchor),
-
-            // Blur: full screen (no hard edge at glow boundary)
-            glowBlur.topAnchor.constraint(equalTo: view.topAnchor),
-            glowBlur.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            glowBlur.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            glowBlur.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-
-            // Emulator: centered, aspect ratio, full height with padding
-            emulatorView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emulatorView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: pad),
-            emulatorView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -pad),
-            emulatorView.widthAnchor.constraint(equalTo: emulatorView.heightAnchor, multiplier: canvasRatio),
-
-            // Joystick: centered horizontally between safe area left and emulator left
-            joystick.centerXAnchor.constraint(equalTo: leftArea.centerXAnchor),
-            joystick.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 80),
-            joystick.widthAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.42),
-            joystick.heightAnchor.constraint(equalTo: joystick.widthAnchor),
-
-            // Numpad: centered in right panel, same width as joystick, top 48pt
-            numpad.centerXAnchor.constraint(equalTo: rightArea.centerXAnchor),
-            numpad.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 80),
-            numpad.widthAnchor.constraint(equalTo: joystick.widthAnchor),
-            numpad.heightAnchor.constraint(equalTo: numpad.widthAnchor, multiplier: 1.33),
-
-            // Soft keys: flanking game screen at bottom
-            lskButton.trailingAnchor.constraint(equalTo: emulatorView.leadingAnchor, constant: -6),
-            lskButton.bottomAnchor.constraint(equalTo: emulatorView.bottomAnchor),
-            lskButton.widthAnchor.constraint(equalToConstant: 68),
-            lskButton.heightAnchor.constraint(equalToConstant: 40),
-
-            rskButton.leadingAnchor.constraint(equalTo: emulatorView.trailingAnchor, constant: 6),
-            rskButton.bottomAnchor.constraint(equalTo: emulatorView.bottomAnchor),
-            rskButton.widthAnchor.constraint(equalToConstant: 68),
-            rskButton.heightAnchor.constraint(equalToConstant: 40),
-
-            // Form / List: full screen (overlays everything when visible)
-            formView.topAnchor.constraint(equalTo: view.topAnchor),
-            formView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            formView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            formView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-
-            listView.topAnchor.constraint(equalTo: view.topAnchor),
-            listView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            listView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            listView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-
-            // Back button: top-left
-            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
-            backButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 4),
-        ])
-
-        // Game screen rounded corners + border
-        emulatorView.layer.cornerRadius = 8
+        glowContentView.alpha = 0.18
+        for child: UIView in [glowContainer, emulatorView, joystick, numpad, lskButton, rskButton, formView, listView, backButton, settingsButton, editorHint] { view.addSubview(child) }
+        formView.isHidden = true; listView.isHidden = true
         emulatorView.clipsToBounds = true
-        emulatorView.layer.borderColor = UIColor(white: 1, alpha: 0.12).cgColor
-        emulatorView.layer.borderWidth = 1
+        for (button, title, code) in [(lskButton, "左软键", -6), (rskButton, "右软键", -7)] {
+            button.tag = code; button.setTitle(title, for: .normal)
+            button.addTarget(self, action: #selector(softKeyDown(_:)), for: .touchDown)
+            button.addTarget(self, action: #selector(softKeyUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        }
+        backButton.setTitle("退出", for: .normal)
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        settingsButton.setTitle("设置", for: .normal)
+        settingsButton.showsMenuAsPrimaryAction = true
+        settingsButton.menu = UIMenu(children: [
+            UIAction(title: "显示与按键", image: UIImage(systemName: "slider.horizontal.3")) { [weak self] _ in self?.showPlaySettings() },
+            UIAction(title: "导出运行日志", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                guard let self else { return }; DiagnosticExport.present(saveRoot: URL(fileURLWithPath: self.saveRoot), from: self)
+            }
+        ])
+        for button in [lskButton, rskButton, backButton, settingsButton] {
+            button.backgroundColor = UIColor(white: 0.14, alpha: 0.95)
+            button.setTitleColor(.white, for: .normal); button.layer.cornerRadius = 8
+            button.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        }
+        for (name, child) in [("joystick", joystick as UIView), ("numpad", numpad as UIView), ("left", lskButton as UIView), ("right", rskButton as UIView)] {
+            child.accessibilityIdentifier = name
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(moveControl(_:)))
+            pan.isEnabled = false; child.addGestureRecognizer(pan); controlPans.append(pan)
+        }
+        numpad.onKeyLayoutChange = { [weak self] keys in
+            guard let self else { return }
+            self.preferences.keys = self.preferences.keys.filter { !$0.key.hasPrefix(self.layoutPrefix) }
+            for (code, placement) in keys { self.preferences.keys[self.layoutPrefix + code] = placement }
+        }
+        editorHint.font = .systemFont(ofSize: 11); editorHint.textColor = .systemYellow
+        editorHint.numberOfLines = 2; editorHint.isHidden = true
+    }
 
-        view.bringSubviewToFront(formView)
-        view.bringSubviewToFront(listView)
-        view.bringSubviewToFront(backButton)
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if lastSize != view.bounds.size { KeyInputController.shared.releaseAll(); lastSize = view.bounds.size }
+        layoutControls()
+    }
+
+    private func layoutControls() {
+        let safe = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 8, dy: 4)
+        guard safe.width > 0, safe.height > 100 else { return }
+        let landscape = view.bounds.width > view.bounds.height
+        let content: CGRect
+        var defaults: [String: CGRect] = [:]
+        let scale = CGFloat(preferences.keyScale)
+        if landscape {
+            let side = min(safe.width * 0.25, safe.height * 0.52)
+            content = CGRect(x: safe.minX + side + 8, y: safe.minY + 42, width: safe.width - 2 * side - 16, height: safe.height - 48)
+            let controlsHeight = safe.height - 94
+            let joy = min(side * 0.9, controlsHeight) * scale
+            let padWidth = side * 0.94 * scale; let padHeight = min(side * 1.42, controlsHeight) * scale
+            defaults["joystick"] = CGRect(x: safe.minX + (side - joy)/2, y: safe.minY + 46 + (controlsHeight - joy)/2, width: joy, height: joy)
+            defaults["numpad"] = CGRect(x: safe.maxX - side + (side - padWidth)/2, y: safe.minY + 46 + (controlsHeight - padHeight)/2, width: padWidth, height: padHeight)
+            defaults["left"] = CGRect(x: safe.minX + (side - 72)/2, y: safe.maxY - 40, width: 72, height: 36)
+            defaults["right"] = CGRect(x: safe.maxX - side + (side - 72)/2, y: safe.maxY - 40, width: 72, height: 36)
+        } else {
+            let controlsHeight = min(250, max(208, safe.height * 0.32))
+            content = CGRect(x: safe.minX, y: safe.minY + 42, width: safe.width, height: safe.height - controlsHeight - 90)
+            let top = safe.maxY - controlsHeight
+            let joy = min(safe.width * 0.36, controlsHeight * 0.78) * scale
+            let padWidth = safe.width * 0.47 * scale; let padHeight = (controlsHeight - 8) * scale
+            defaults["joystick"] = CGRect(x: safe.minX + 4, y: top + (controlsHeight - joy)/2, width: joy, height: joy)
+            defaults["numpad"] = CGRect(x: safe.maxX - padWidth, y: top, width: padWidth, height: padHeight)
+            defaults["left"] = CGRect(x: safe.minX, y: content.maxY + 4, width: 72, height: 36)
+            defaults["right"] = CGRect(x: safe.maxX - 72, y: content.maxY + 4, width: 72, height: 36)
+        }
+        emulatorView.frame = PlayGeometry.screen(in: content, canvas: CGSize(width: canvasWidth, height: canvasHeight), displayScale: view.window?.screen.scale ?? 3, mode: preferences.scaling)
+        emulatorView.layer.cornerRadius = preferences.scaling == .fit ? 6 : 0
+        glowContainer.frame = emulatorView.frame; glowContentView.frame = glowContainer.bounds
+        for (name, child) in [("joystick", joystickView as UIView?), ("numpad", numpadView as UIView?), ("left", lskButton as UIView?), ("right", rskButton as UIView?)] {
+            guard let child, var frame = defaults[name] else { continue }
+            if let custom = preferences.controls[layoutPrefix + name] {
+                frame.origin = CGPoint(x: safe.minX + safe.width * custom.x - frame.width/2, y: safe.minY + safe.height * custom.y - frame.height/2)
+            }
+            child.frame = PlayGeometry.clamp(frame, to: safe)
+            child.alpha = CGFloat(preferences.opacity)
+        }
+        numpadView?.editedKeys = Dictionary(uniqueKeysWithValues: preferences.keys.filter { $0.key.hasPrefix(layoutPrefix) }.map { (String($0.key.dropFirst(layoutPrefix.count)), $0.value) })
+        backButton.frame = CGRect(x: safe.minX, y: safe.minY, width: 64, height: 36)
+        settingsButton.frame = CGRect(x: safe.maxX - 64, y: safe.minY, width: 64, height: 36)
+        editorHint.frame = CGRect(x: safe.minX + 70, y: safe.minY, width: max(10, safe.width - 140), height: 38)
+        formView.frame = safe; listView.frame = safe
+        placeholderIconView?.frame = emulatorView.frame
+        for top in [backButton, settingsButton, editorHint] { view.bringSubviewToFront(top) }
+    }
+
+    private func requestOrientation() {
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+        let mask: UIInterfaceOrientationMask
+        switch preferences.orientation { case .automatic: return; case .portrait: mask = .portrait; case .landscape: mask = .landscape }
+        view.window?.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in print("[Orientation] \(error)") }
+    }
+
+    private func showPlaySettings() {
+        let controller = PlaySettingsViewController(value: preferences)
+        controller.onChange = { [weak self] value in self?.preferences = value; self?.savePreferences(); self?.view.setNeedsLayout() }
+        controller.onEdit = { [weak self] individual in self?.startLayoutEditing(individual: individual) }
+        controller.onExport = { [weak self] in
+            guard let self else { return }; self.savePreferences()
+            let share = UIActivityViewController(activityItems: [self.preferenceStore.url], applicationActivities: nil)
+            share.popoverPresentationController?.sourceView = self.settingsButton
+            self.present(share, animated: true)
+        }
+        let navigation = UINavigationController(rootViewController: controller)
+        navigation.modalPresentationStyle = .formSheet
+        present(navigation, animated: true)
+    }
+
+    private func savePreferences() {
+        do { try preferenceStore.save(preferences) }
+        catch { showConfigurationError(error.localizedDescription) }
+    }
+
+    private func showConfigurationError(_ message: String) {
+        let alert = UIAlertController(title: "配置未保存", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        (presentedViewController ?? self).present(alert, animated: true)
+    }
+
+    private func startLayoutEditing(individual: Bool) {
+        platformPause(); editingLayout = true; editingIndividualKeys = individual
+        joystickView?.isEditingLayout = true; numpadView?.isEditingLayout = true; numpadView?.editingKeys = individual
+        for pan in controlPans { pan.isEnabled = !(individual && pan.view === numpadView) }
+        backButton.setTitle("完成", for: .normal)
+        editorHint.text = individual ? "拖动数字键，双指缩放单键；不要重叠" : "拖动方向盘、键盘或软键；横竖屏分别保存"
+        editorHint.isHidden = false
+    }
+
+    private func finishLayoutEditing() {
+        if editingIndividualKeys && numpadView?.diagnosticLayoutIsValid() != true {
+            showConfigurationError("数字键重叠或超出键盘区域。请调整，或在设置中恢复默认布局。")
+            return
+        }
+        editingLayout = false; editingIndividualKeys = false
+        joystickView?.isEditingLayout = false; numpadView?.isEditingLayout = false; numpadView?.editingKeys = false
+        controlPans.forEach { $0.isEnabled = false }
+        editorHint.isHidden = true; backButton.setTitle("退出", for: .normal)
+        savePreferences(); platformResume()
+    }
+
+    @objc private func moveControl(_ gesture: UIPanGestureRecognizer) {
+        guard editingLayout, let child = gesture.view, let name = child.accessibilityIdentifier else { return }
+        if gesture.state == .began { dragStart = child.center }
+        let shift = gesture.translation(in: view)
+        let safe = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 8, dy: 4)
+        child.frame = PlayGeometry.clamp(CGRect(x: dragStart.x + shift.x - child.bounds.width/2, y: dragStart.y + shift.y - child.bounds.height/2, width: child.bounds.width, height: child.bounds.height), to: safe)
+        preferences.controls[layoutPrefix + name] = ControlPlacement(x: Double((child.center.x - safe.minX)/safe.width), y: Double((child.center.y - safe.minY)/safe.height))
+    }
+
+    private func writeDiagnosticGeometry() {
+        let safe = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 7, dy: 3)
+        let frame = emulatorView.frame
+        let ratio = frame.width * (view.window?.screen.scale ?? 3) / CGFloat(canvasWidth)
+        let integerOK = preferences.scaling != .integer || ratio < 1 || abs(ratio.rounded() - ratio) < 0.001
+        let originalOK = preferences.scaling != .original || ratio <= 1.001
+        let correctRatio = abs(frame.width / frame.height - CGFloat(canvasWidth)/CGFloat(canvasHeight)) < 0.001
+        let valid = numpadView?.diagnosticLayoutIsValid() == true && safe.contains(frame) && integerOK && originalOK && correctRatio
+        let payload: [String: Any] = ["valid": valid, "orientation": layoutPrefix, "scaling": preferences.scaling.rawValue,
+            "physicalPixelScale": ratio, "aspectRatio": frame.width/frame.height, "safeArea": safe.debugDescription, "screen": frame.debugDescription]
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: .prettyPrinted) {
+            try? data.write(to: URL(fileURLWithPath: saveRoot).appendingPathComponent("diagnostic-input-layout.json"))
+        }
     }
 
     // MARK: - Soft keys
 
     @objc private func softKeyDown(_ sender: UIButton) {
+        guard !editingLayout else { return }
         softKeyHaptic.impactOccurred(intensity: 0.6)
         KeyInputController.shared.press(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.30, alpha: 1)
     }
 
     @objc private func softKeyUp(_ sender: UIButton) {
+        guard !editingLayout else { return }
         KeyInputController.shared.release(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.12, alpha: 1)
     }
@@ -366,6 +414,11 @@ class GameViewController: UIViewController {
             try SessionJournal.write(saveRoot: saveRoot, status: "running", detail: "正在初始化 JVM")
         } catch { return "无法创建独立存档目录：" + error.localizedDescription }
 
+        do { _ = try RMSSnapshots(saveRoot: URL(fileURLWithPath: saveRoot)).create() }
+        catch { return "无法备份 RMS：" + error.localizedDescription }
+        let logResult = (saveRoot + "/last-run.log").withCString { studio_log_begin($0) }
+        guard logResult == 0 else { return "无法写入游戏日志，错误码 \(logResult)。" }
+        defer { studio_log_end() }
         let initResult = jvm_bridge_init(resRoot, saveRoot, jarPath,
                                          Int32(canvasWidth),
                                          Int32(canvasHeight),
@@ -381,11 +434,13 @@ class GameViewController: UIViewController {
         let runResult = jvm_bridge_run_midlet(jarPath)
         print("[Swift] MIDlet run result: \(runResult)")
         jvm_bridge_destroy()
+        studio_log_end()
         try? SessionJournal.write(saveRoot: saveRoot, status: runResult == 0 ? "finished" : "failed", detail: "MIDlet result \(runResult)")
         return runResult == 0 ? nil : "MIDlet 退出码 \(runResult)，请备份 last-session.json 和系统崩溃报告。"
     }
 
     @objc private func backTapped() {
+        if editingLayout { finishLayoutEditing(); return }
         backButton.isEnabled = false
         KeyInputController.shared.releaseAll()
         jvm_bridge_request_stop()
