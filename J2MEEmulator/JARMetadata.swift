@@ -1,9 +1,11 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 import Compression
 
 /// Reads MIDlet metadata (name, icon) from JAR manifest without starting JVM.
-struct JARMetadata {
+nonisolated struct JARMetadata {
     let midletName: String
     let version: String?
     let vendor: String?
@@ -46,6 +48,16 @@ struct JARMetadata {
         )
     }
 
+    static func validate(_ url: URL) throws {
+        guard let metadata = read(from: url.path), let name = metadata.className, !name.isEmpty,
+              let entry = ZIPReader.extractEntry(zipPath: url.path,
+                  entryName: name.replacingOccurrences(of: ".", with: "/") + ".class"),
+              entry.count >= 8, entry.prefix(4) == Data([0xca, 0xfe, 0xba, 0xbe]) else {
+            throw GameLibraryError.invalidMIDlet
+        }
+    }
+
+    #if canImport(UIKit)
     /// Extract icon image from JAR
     func readIcon(from jarPath: String) -> UIImage? {
         guard var path = iconPath, !path.isEmpty else { return nil }
@@ -57,6 +69,7 @@ struct JARMetadata {
         }
         return UIImage(data: data)
     }
+    #endif
 
     /// Parse MANIFEST.MF format (key: value with continuation lines)
     private static func parseManifest(_ text: String) -> [String: String] {
@@ -86,15 +99,15 @@ struct JARMetadata {
 
 // MARK: - Minimal ZIP reader using zlib (system library)
 
-enum ZIPReader {
+nonisolated enum ZIPReader {
 
     /// Extract a single entry from a ZIP file by name
     static func extractEntry(zipPath: String, entryName: String) -> Data? {
         let fileURL = URL(fileURLWithPath: zipPath)
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: zipPath),
               let fileSize = attrs[.size] as? Int,
-              fileSize <= 50_000_000 else { return nil } // 50 MB max for JAR metadata scan
-        guard let fileData = try? Data(contentsOf: fileURL) else { return nil }
+              fileSize >= 22 else { return nil }
+        guard let fileData = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else { return nil }
 
         return fileData.withUnsafeBytes { rawBuf -> Data? in
             guard let base = rawBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return nil }
@@ -138,10 +151,11 @@ enum ZIPReader {
     }
 
     private static func findEOCD(base: UnsafePointer<UInt8>, size: Int) -> Int? {
+        guard size >= 22 else { return nil }
         // EOCD is at least 22 bytes, scan backwards
         let minPos = max(0, size - 65557) // max comment size is 65535
         for i in stride(from: size - 22, through: minPos, by: -1) {
-            if readU32(base, i) == 0x06054b50 {
+            if readU32(base, i) == 0x06054b50 && i + 22 + Int(readU16(base, i + 20)) == size {
                 return i
             }
         }
@@ -158,7 +172,9 @@ enum ZIPReader {
         let localExtraLen = Int(readU16(base, offset + 28))
         let dataStart = offset + 30 + localNameLen + localExtraLen
 
-        guard dataStart + compSize <= size else { return nil }
+        // Bound a single extracted metadata/icon/class entry, not the game count.
+        guard dataStart + compSize <= size, uncompSize <= 16 * 1024 * 1024 else { return nil }
+        if uncompSize == 0 { return compSize == 0 ? Data() : nil }
 
         if method == 0 {
             // Stored (no compression)

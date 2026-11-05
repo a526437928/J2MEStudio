@@ -14,7 +14,6 @@ class JoystickView: UIView {
     private let thumbView = UIView()
 
     private var activeCode: Int32 = 0
-    private var repeatTimer: Timer?
 
     /// Dead zone as fraction of base radius (no key press within this range)
     private let deadZoneRatio: CGFloat = 0.25
@@ -160,21 +159,11 @@ class JoystickView: UIView {
 
     private func pressKey(_ code: Int32) {
         activeCode = code
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_PRESSED), code)
-
-        repeatTimer?.invalidate()
-        repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-            self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
-                guard let self, self.activeCode == code else { return }
-                j2me_input_post_key(Int32(J2ME_INPUT_KEY_REPEATED), code)
-            }
-        }
+        KeyInputController.shared.press(code)
     }
 
     private func releaseKey(_ code: Int32) {
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_RELEASED), code)
+        KeyInputController.shared.release(code)
         activeCode = 0
-        repeatTimer?.invalidate()
-        repeatTimer = nil
     }
 }

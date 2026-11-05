@@ -134,6 +134,8 @@ public class Display {
         running = true;
         eventQueue.startProcessing();
         System.out.println("[Display] Event loop started (" + screenWidth + "x" + screenHeight + ")");
+        boolean platformPaused = false;
+        boolean resumeAfterPlatformPause = false;
 
         while (running && !MIDlet.isDestroyRequested()) {
             // 0. Check if native side requested stop (e.g. user pressed Back)
@@ -147,7 +149,20 @@ public class Display {
             int[] nativeEvent;
             while ((nativeEvent = NativeBridge.pollInputEvent()) != null) {
                 int type = nativeEvent[0];
-                if (type <= 2 && current instanceof Canvas) {
+                if (type == 20 && !platformPaused) {
+                    platformPaused = true;
+                    resumeAfterPlatformPause = !MIDlet.isPaused();
+                    if (resumeAfterPlatformPause && currentMIDlet != null) currentMIDlet.callPauseApp();
+                } else if (type == 21 && platformPaused) {
+                    platformPaused = false;
+                    if (resumeAfterPlatformPause && currentMIDlet != null) {
+                        try { currentMIDlet.callStartApp(); }
+                        catch (Exception e) { throw new RuntimeException("Resume failed: " + e); }
+                    }
+                    resumeAfterPlatformPause = false;
+                } else if (platformPaused) {
+                    // UIKit releases held keys before posting the pause event.
+                } else if (type <= 2 && current instanceof Canvas) {
                     // Pointer event → post CanvasEvent
                     Canvas c = (Canvas) current;
                     int ceType = type == 0 ? CanvasEvent.POINTER_PRESSED :
@@ -171,7 +186,7 @@ public class Display {
             }
 
             // 2. Handle resumeRequest — call startApp() again
-            if (MIDlet.isResumeRequested() && currentMIDlet != null) {
+            if (!platformPaused && MIDlet.isResumeRequested() && currentMIDlet != null) {
                 try {
                     currentMIDlet.callStartApp();
                 } catch (Exception e) {
@@ -180,7 +195,7 @@ public class Display {
             }
 
             // 3. Repaint if needed (Canvas only)
-            if (current instanceof Canvas) {
+            if (!platformPaused && !MIDlet.isPaused() && current instanceof Canvas) {
                 Canvas canvas = (Canvas) current;
                 if (canvas.repaintPending) {
                     canvas.doPaint();

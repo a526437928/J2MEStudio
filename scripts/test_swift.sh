@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p build/test-fixtures
+python3 - <<'PY'
+import pathlib,zipfile
+root=pathlib.Path('build/test-fixtures')
+def jar(name,title,missing=False):
+    p=root/name;p.parent.mkdir(parents=True,exist_ok=True)
+    with zipfile.ZipFile(p,'w',zipfile.ZIP_DEFLATED) as z:
+        z.writestr('META-INF/MANIFEST.MF','Manifest-Version: 1.0\nMIDlet-1: '+title+', , Test\n\n')
+        if not missing:z.writestr('Test.class',b'\xca\xfe\xba\xbe\x00\x00\x00\x34fixture for metadata tests only')
+jar('A/游戏.jar','中文诊断甲');jar('B/游戏.jar','中文诊断乙')
+jar('missing-class.jar','invalid',True)
+for i in range(100):jar(f'many/{i}.JAR',f'Test {i}')
+for name,b in [('empty.jar',b''),('short.jar',b'PK'),('truncated.jar',b'PK\x03\x04'+bytes(28))]:(root/name).write_bytes(b)
+PY
+swiftc -swift-version 5 J2MEEmulator/GameLibrary.swift J2MEEmulator/JARMetadata.swift \
+  tests/LibraryTests.swift -o build/library-tests
+build/library-tests build/test-fixtures

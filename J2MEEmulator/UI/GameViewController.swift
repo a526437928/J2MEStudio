@@ -23,6 +23,7 @@ class GameViewController: UIViewController {
     let jarPath: String
     let appName: String
     let appIcon: UIImage
+    let saveRoot: String
     let canvasWidth: Int
     let canvasHeight: Int
     let render3dScale: Int
@@ -43,14 +44,17 @@ class GameViewController: UIViewController {
     // Controls — created based on layoutMode
     private var joystickView: JoystickView?
     private var numpadView: NumpadView?
+    private var hasStarted = false
 
     init(jarPath: String, appName: String, appIcon: UIImage,
+         saveRoot: String,
          canvasWidth: Int = 240, canvasHeight: Int = 320,
          render3dScale: Int = 3, fpsLimit: Int = 0,
          layoutMode: GameLayoutMode = .ngage) {
         self.jarPath = jarPath
         self.appName = appName
         self.appIcon = appIcon
+        self.saveRoot = saveRoot
         self.canvasWidth = canvasWidth
         self.canvasHeight = canvasHeight
         self.render3dScale = render3dScale
@@ -64,6 +68,7 @@ class GameViewController: UIViewController {
     deinit {
         setGlobalEmulatorView(nil)
         alertTimeoutWork?.cancel()
+        NotificationCenter.default.removeObserver(self)
     }
 
     private var alertTimeoutWork: DispatchWorkItem?
@@ -110,6 +115,25 @@ class GameViewController: UIViewController {
             }
         }
 
+        if ProcessInfo.processInfo.arguments.contains("--studio-smoke-test") {
+            emulatorView.onFirstFrame = { [weak self] in
+                self?.placeholderIconView?.isHidden = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    KeyInputController.shared.press(-4)
+                    KeyInputController.shared.press(53)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    KeyInputController.shared.release(53)
+                    // The direction key must continue repeating after releasing 5.
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    KeyInputController.shared.release(-4)
+                    j2me_input_post_key(20, 0)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { j2me_input_post_key(21, 0) }
+            }
+        }
+
         // Mirror game frames to glow layer
         emulatorView.onFrame = { [weak self] cgImage in
             self?.glowContentView.layer.contents = cgImage
@@ -120,6 +144,8 @@ class GameViewController: UIViewController {
         j2me_render_set_flush_callback(flushCallback)
         j2me_ui_set_callback(gameUICallback)
         activeGameViewController = self
+        NotificationCenter.default.addObserver(self, selector: #selector(platformPause), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(platformResume), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -179,7 +205,7 @@ class GameViewController: UIViewController {
         listView.isHidden = true
 
         // Soft keys — flanking the game screen at bottom
-        for (btn, title) in [(lskButton, "L"), (rskButton, "R")] {
+        for (btn, title) in [(lskButton, "左软键"), (rskButton, "右软键")] {
             btn.setTitle(title, for: .normal)
             btn.titleLabel?.font = .systemFont(ofSize: 18, weight: .medium)
             btn.setTitleColor(.white, for: .normal)
@@ -234,7 +260,7 @@ class GameViewController: UIViewController {
             // Emulator: centered, aspect ratio, full height with padding
             emulatorView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emulatorView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: pad),
-            emulatorView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -pad),
+            emulatorView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -pad),
             emulatorView.widthAnchor.constraint(equalTo: emulatorView.heightAnchor, multiplier: canvasRatio),
 
             // Joystick: centered horizontally between safe area left and emulator left
@@ -291,12 +317,12 @@ class GameViewController: UIViewController {
 
     @objc private func softKeyDown(_ sender: UIButton) {
         softKeyHaptic.impactOccurred(intensity: 0.6)
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_PRESSED), Int32(sender.tag))
+        KeyInputController.shared.press(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.30, alpha: 1)
     }
 
     @objc private func softKeyUp(_ sender: UIButton) {
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_RELEASED), Int32(sender.tag))
+        KeyInputController.shared.release(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.12, alpha: 1)
     }
 
@@ -305,25 +331,30 @@ class GameViewController: UIViewController {
     // ============================================================
 
     private func startGame() {
+        guard !hasStarted else { return }
+        hasStarted = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.runMIDlet()
+            let error = self?.runMIDlet()
             DispatchQueue.main.async {
-                self?.dismiss(animated: true)
+                KeyInputController.shared.releaseAll()
+                let parent = self?.presentingViewController
+                self?.dismiss(animated: true) {
+                    if let error {
+                        let alert = UIAlertController(title: "游戏未正常启动", message: error, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "确定", style: .default))
+                        parent?.present(alert, animated: true)
+                    }
+                }
             }
         }
     }
 
-    private func runMIDlet() {
-        guard let resRoot = Bundle.main.resourcePath else { return }
-        let docs = NSSearchPathForDirectoriesInDomains(
-            .documentDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory()
-
-        // Per-game save directory: Documents/Games Data/{jarFilename}/
-        let jarFileName = URL(fileURLWithPath: jarPath).deletingPathExtension().lastPathComponent
-        let gameId = jarFileName.replacingOccurrences(of: "[^a-zA-Z0-9._-]",
-                                                       with: "_", options: .regularExpression)
-        let saveRoot = docs + "/Games Data/" + gameId
-        try? FileManager.default.createDirectory(atPath: saveRoot, withIntermediateDirectories: true)
+    private func runMIDlet() -> String? {
+        guard let resRoot = Bundle.main.resourcePath else { return "运行库资源目录缺失。" }
+        do {
+            try FileManager.default.createDirectory(atPath: saveRoot, withIntermediateDirectories: true)
+            try SessionJournal.write(saveRoot: saveRoot, status: "running", detail: "正在初始化 JVM")
+        } catch { return "无法创建独立存档目录：" + error.localizedDescription }
 
         let initResult = jvm_bridge_init(resRoot, saveRoot, jarPath,
                                          Int32(canvasWidth),
@@ -332,18 +363,29 @@ class GameViewController: UIViewController {
                                          Int32(fpsLimit))
         guard initResult == 0 else {
             print("[Swift] ERROR: JVM init failed with code \(initResult)")
-            return
+            try? SessionJournal.write(saveRoot: saveRoot, status: "failed", detail: "JVM init \(initResult)")
+            return "JVM 初始化失败，错误码 \(initResult)。"
         }
 
         let runResult = jvm_bridge_run_midlet(jarPath)
         print("[Swift] MIDlet run result: \(runResult)")
         jvm_bridge_destroy()
+        try? SessionJournal.write(saveRoot: saveRoot, status: runResult == 0 ? "finished" : "failed", detail: "MIDlet result \(runResult)")
+        return runResult == 0 ? nil : "MIDlet 退出码 \(runResult)，请备份 last-session.json 和系统崩溃报告。"
     }
 
     @objc private func backTapped() {
         backButton.isEnabled = false
+        KeyInputController.shared.releaseAll()
         jvm_bridge_request_stop()
     }
+
+    @objc private func platformPause() {
+        KeyInputController.shared.releaseAll()
+        j2me_input_post_key(20, 0)
+    }
+
+    @objc private func platformResume() { j2me_input_post_key(21, 0) }
 
     // ============================================================
     // MARK: - View switching
@@ -387,7 +429,7 @@ class GameViewController: UIViewController {
 
         let cmdCount = j2me_ui_get_command_count()
         if cmdCount == 0 {
-            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            alert.addAction(UIAlertAction(title: "确定", style: .default) { [weak self] _ in
                 self?.alertTimeoutWork?.cancel()
                 j2me_input_post_key(Int32(J2ME_UI_ALERT_DISMISSED), 0)
             })

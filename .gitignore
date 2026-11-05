@@ -18,5 +18,6 @@ build/
 __pycache__/
 *.pyc
 J2MEEmulator/Resources/apps/test_midlet.jar
+J2MEEmulator/Resources/apps/studio_diagnostics.jar
 j2me_api/classes/
 test_midlet/classes/

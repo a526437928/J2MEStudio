@@ -17,12 +17,14 @@ private class OrientationNavigationController: UINavigationController {
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
+    private weak var libraryController: AppsListViewController?
 
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
 
         let vc = AppsListViewController()
+        libraryController = vc
         let nav = OrientationNavigationController(rootViewController: vc)
         nav.navigationBar.prefersLargeTitles = false
 
@@ -37,6 +39,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(windowScene: windowScene)
         window?.rootViewController = nav
         window?.makeKeyAndVisible()
+        if !connectionOptions.urlContexts.isEmpty {
+            vc.importGames(connectionOptions.urlContexts.map(\.url))
+        }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+        libraryController?.importGames(contexts.map(\.url))
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

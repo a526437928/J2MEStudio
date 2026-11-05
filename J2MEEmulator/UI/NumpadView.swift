@@ -12,8 +12,6 @@ class NumpadView: UIView {
     static let KEY_SOFT_LEFT: Int32  = -6
     static let KEY_SOFT_RIGHT: Int32 = -7
 
-    private var repeatTimer: Timer?
-    private var repeatKeyCode: Int32 = 0
     private var commandButtons: [UIButton] = []
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
@@ -94,23 +92,13 @@ class NumpadView: UIView {
     @objc private func down(_ sender: UIButton) {
         let code = Int32(sender.tag)
         haptic.impactOccurred(intensity: 0.6)
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_PRESSED), code)
+        KeyInputController.shared.press(code)
         sender.backgroundColor = UIColor(white: 0.30, alpha: 1)
-        repeatKeyCode = code
-        repeatTimer?.invalidate()
-        repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-            self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
-                guard let self, self.repeatKeyCode == code else { return }
-                j2me_input_post_key(Int32(J2ME_INPUT_KEY_REPEATED), code)
-            }
-        }
     }
 
     @objc private func up(_ sender: UIButton) {
-        j2me_input_post_key(Int32(J2ME_INPUT_KEY_RELEASED), Int32(sender.tag))
+        KeyInputController.shared.release(Int32(sender.tag))
         sender.backgroundColor = UIColor(white: 0.12, alpha: 1)
-        repeatTimer?.invalidate()
-        repeatTimer = nil
     }
 
     // MARK: - Canvas command buttons

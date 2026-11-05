@@ -25,4 +25,5 @@ test -d "$APP"
 # Save the successful .app before attempting IPA validation/packaging.
 ditto -c -k --sequesterRsrc --keepParent "$APP" build/artifacts/J2MEStudio-device-app.zip
 python3 scripts/package_ipa.py "$APP" build/artifacts/J2MEStudio-unsigned.ipa
+cp J2MEEmulator/Resources/apps/studio_diagnostics.jar build/artifacts/
 shasum -a 256 build/artifacts/* > build/logs/SHA256SUMS.txt

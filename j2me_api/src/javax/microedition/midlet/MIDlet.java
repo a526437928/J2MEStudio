@@ -95,10 +95,12 @@ public abstract class MIDlet {
 
     public final void callStartApp() throws MIDletStateChangeException {
         paused = false;
+        resumeRequested = false;
         startApp();
     }
 
     public final void callPauseApp() {
+        paused = true;
         pauseApp();
     }
 

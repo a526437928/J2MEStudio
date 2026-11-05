@@ -83,6 +83,7 @@ public class MIDletRunner {
         } catch (Exception e) {
             System.out.println("[MIDletRunner] ERROR: " + e.getClass().getName() + ": " + e.getMessage());
             e.printStackTrace();
+            throw new RuntimeException(e.toString());
         }
     }
 
@@ -202,10 +203,12 @@ public class MIDletRunner {
 
         } catch (MIDletStateChangeException e) {
             System.out.println("[MIDletRunner] MIDletStateChangeException: " + e.getMessage());
+            throw new RuntimeException(e.toString());
         } catch (Exception e) {
             System.out.println("[MIDletRunner] ERROR in lifecycle: " + e.getClass().getName()
                     + ": " + e.getMessage());
             e.printStackTrace();
+            throw new RuntimeException(e.toString());
         }
     }
 }

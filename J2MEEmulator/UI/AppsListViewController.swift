@@ -11,11 +11,18 @@ import UniformTypeIdentifiers
 class AppsListViewController: UIViewController,
                       UICollectionViewDataSource,
                       UICollectionViewDelegate,
+                      UISearchResultsUpdating,
                       UIDocumentPickerDelegate {
 
     private var springboardCollectionView: UICollectionView!
     private let emptyStateLabel = UILabel()
     private var lastLayoutWidth: CGFloat = 0
+    private let searchController = UISearchController(searchResultsController: nil)
+    private let library = GameLibrary(documents: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+    private let libraryQueue = DispatchQueue(label: "org.j2mestudio.library", qos: .userInitiated)
+    private var allApps: [AppInfo] = []
+    private var scanning = false
+    private var smokeStarted = false
 
     /// Directory where imported JARs are stored
     private static var gamesDirectory: String {
@@ -28,6 +35,12 @@ class AppsListViewController: UIViewController,
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        title = "游戏库"
+        searchController.searchResultsUpdater = self
+        searchController.searchBar.placeholder = "搜索游戏名称、厂商或文件名"
+        searchController.obscuresBackgroundDuringPresentation = false
+        navigationItem.searchController = searchController
+        definesPresentationContext = true
 
         // Animated blob background
         let bg = AnimatedBackgroundView()
@@ -45,6 +58,10 @@ class AppsListViewController: UIViewController,
             systemItem: .add, primaryAction: UIAction { [weak self] _ in
                 self?.addAppTapped()
             })
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "导入 JAR 游戏"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "测试 MIDlet", primaryAction: UIAction { [weak self] _ in
+            self?.installDiagnostics()
+        })
 
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
@@ -71,7 +88,7 @@ class AppsListViewController: UIViewController,
         ])
 
         // Empty state
-        emptyStateLabel.text = "No Games Yet\nTap + to add a .jar file"
+        emptyStateLabel.text = "还没有游戏\n点右上角 + 导入 JAR 文件\n或安装左上角的免费测试 MIDlet"
         emptyStateLabel.textColor = .secondaryLabel
         emptyStateLabel.font = .systemFont(ofSize: 17)
         emptyStateLabel.textAlignment = .center
@@ -129,7 +146,7 @@ class AppsListViewController: UIViewController,
 
     private func addAppTapped() {
         let jarType = UTType(filenameExtension: "jar") ?? .data
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [jarType])
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [jarType], asCopy: true)
         picker.delegate = self
         picker.allowsMultipleSelection = true
         present(picker, animated: true)
@@ -137,81 +154,127 @@ class AppsListViewController: UIViewController,
 
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        let fm = FileManager.default
-        var imported = 0
+        importGames(urls)
+    }
 
-        for url in urls {
-            guard url.pathExtension.lowercased() == "jar" else { continue }
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-
-            let destURL = URL(fileURLWithPath: Self.gamesDirectory)
-                .appendingPathComponent(url.lastPathComponent)
-
-            // If file with same name exists, remove it (overwrite)
-            try? fm.removeItem(at: destURL)
-
-            do {
-                try fm.copyItem(at: url, to: destURL)
-                imported += 1
-            } catch {
-                print("[Swift] Failed to import \(url.lastPathComponent): \(error)")
+    func importGames(_ urls: [URL]) {
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        let store = library
+        libraryQueue.async { [weak self] in
+            var errors: [String] = []
+            for url in urls {
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                do { try store.importGame(from: url, validate: JARMetadata.validate) }
+                catch { errors.append(url.lastPathComponent + "：" + error.localizedDescription) }
             }
-        }
-
-        if imported > 0 {
-            scanApps()
+            DispatchQueue.main.async {
+                self?.navigationItem.rightBarButtonItem?.isEnabled = true
+                self?.scanApps()
+                if !errors.isEmpty { self?.showMessage("部分文件未导入", errors.joined(separator: "\n")) }
+            }
         }
     }
 
-    // ============================================================
-    // MARK: - App scanning (Documents/games/)
-    // ============================================================
+    private func installDiagnostics() {
+        guard let url = Bundle.main.url(forResource: "studio_diagnostics", withExtension: "jar") else {
+            showMessage("测试文件缺失", "此构建未包含测试 MIDlet，请重新下载完整构建。")
+            return
+        }
+        importGames([url])
+    }
 
     struct AppInfo {
+        let record: GameRecord
         let name: String
         let path: String
         let fileName: String
         let version: String?
         let vendor: String?
         let icon: UIImage
+        let saveRoot: String
     }
     private var apps: [AppInfo] = []
 
     private func scanApps() {
-        let gamesDir = Self.gamesDirectory
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            var jarPaths: [(name: String, path: String)] = []
-
-            if let files = try? FileManager.default.contentsOfDirectory(atPath: gamesDir) {
-                for file in files where file.hasSuffix(".jar") {
-                    jarPaths.append((name: String(file.dropLast(4)), path: gamesDir + "/" + file))
+        guard !scanning else { return }
+        scanning = true
+        let store = library
+        libraryQueue.async { [weak self] in
+            do {
+                try store.load()
+                let notices = try store.adoptLegacyFiles(validate: JARMetadata.validate)
+                let records = store.games.map { game in
+                    (game, store.jarURL(for: game), store.saveURL(for: game))
+                }
+                let metadata = records.map { item in
+                    let meta = JARMetadata.read(from: item.1.path)
+                    return (item, meta, meta?.readIcon(from: item.1.path))
+                }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.scanning = false
+                    self.allApps = metadata.enumerated().map { index, item in
+                        let ((game, jar, save), meta, jarIcon) = item
+                        self.migrateSettings(for: game)
+                        let name = meta?.midletName ?? URL(fileURLWithPath: game.fileName).deletingPathExtension().lastPathComponent
+                        return AppInfo(record: game, name: name, path: jar.path, fileName: game.fileName,
+                            version: meta?.version, vendor: meta?.vendor,
+                            icon: Self.springboardIcon(jarIcon, name: name, index: index),
+                            saveRoot: save.path)
+                    }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                    self.updateSearchResults(for: self.searchController)
+                    if !notices.isEmpty { self.showMessage("导入与迁移提示", notices.joined(separator: "\n")) }
+                    self.startSmokeTestIfRequested()
+                }
+            } catch {
+                let message = error.localizedDescription
+                DispatchQueue.main.async {
+                    self?.scanning = false
+                    self?.showMessage("无法读取游戏库", message)
                 }
             }
+        }
+    }
 
-            var unsorted = jarPaths.map { jar -> (String, String, String, String?, String?, UIImage?) in
-                let meta = JARMetadata.read(from: jar.path)
-                let jarIcon = meta?.readIcon(from: jar.path)
-                let fileName = URL(fileURLWithPath: jar.path).lastPathComponent
-                let appName = meta?.midletName ?? jar.name
-                return (appName, jar.path, fileName, meta?.version, meta?.vendor, jarIcon)
-            }
-            unsorted.sort { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+    func updateSearchResults(for searchController: UISearchController) {
+        let query = (searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        apps = allApps.filter { query.isEmpty || [$0.name, $0.fileName, $0.vendor ?? ""].contains {
+            $0.localizedCaseInsensitiveContains(query)
+        } }
+        springboardCollectionView.reloadData()
+        emptyStateLabel.text = allApps.isEmpty ? "还没有游戏\n点右上角 + 导入 JAR 文件\n或安装左上角的免费测试 MIDlet" : "没有匹配的游戏"
+        emptyStateLabel.isHidden = !apps.isEmpty
+    }
 
-            let scannedApps = unsorted.enumerated().map { (index, t) in
-                AppInfo(name: t.0, path: t.1, fileName: t.2,
-                        version: t.3, vendor: t.4,
-                        icon: Self.springboardIcon(t.5, name: t.0, index: index))
+    private func migrateSettings(for game: GameRecord) {
+        guard let old = game.legacySettingsKey else { return }
+        let defaults = UserDefaults.standard
+        let marker = "migrated_" + game.id.uuidString
+        guard !defaults.bool(forKey: marker) else { return }
+        for prefix in ["ss3d_", "resW_", "resH_", "fpsLimit_"] {
+            if let value = defaults.object(forKey: prefix + old) {
+                defaults.set(value, forKey: prefix + game.id.uuidString)
             }
+        }
+        defaults.set(true, forKey: marker)
+    }
 
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.apps = scannedApps
-                self.springboardCollectionView.reloadData()
-                self.emptyStateLabel.isHidden = !scannedApps.isEmpty
-                print("[Swift] Found \(scannedApps.count) MIDlet JARs in \(gamesDir)")
-            }
+    private func showMessage(_ title: String, _ message: String) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func startSmokeTestIfRequested() {
+        guard ProcessInfo.processInfo.arguments.contains("--studio-smoke-test"), !smokeStarted else { return }
+        smokeStarted = true
+        if let app = allApps.first(where: { $0.fileName == "studio_diagnostics.jar" }) {
+            launch(app)
+        } else {
+            smokeStarted = false
+            installDiagnostics()
         }
     }
 
@@ -307,19 +370,19 @@ class AppsListViewController: UIViewController,
         let app = apps[indexPath.item]
         return UIContextMenuConfiguration(actionProvider: { [weak self] _ in
             let ssEnabled = Self.is3DSupersampling(for: app)
-            let toggle3D = UIAction(title: ssEnabled ? "Disable 3D Enhancement" : "Enable 3D Enhancement",
-                                    subtitle: ssEnabled ? "Lower quality, but closer to original" : "Smoother 3D, but not original-accurate",
+            let toggle3D = UIAction(title: ssEnabled ? "关闭 3D 增强" : "开启 3D 增强",
+                                    subtitle: ssEnabled ? "更接近原始画面" : "提升平滑度，兼容性需逐款验证",
                                     image: UIImage(systemName: "cube"),
                                     state: ssEnabled ? .on : .off) { _ in
                 Self.set3DSupersampling(!ssEnabled, for: app)
             }
-            let clearData = UIAction(title: "Clear Game Data",
+            let clearData = UIAction(title: "清除游戏数据",
                                      image: UIImage(systemName: "eraser")) { _ in
                 self?.confirmClearGameData(for: app)
             }
-            let delete = UIAction(title: "Delete", image: UIImage(systemName: "trash"),
+            let delete = UIAction(title: "删除", image: UIImage(systemName: "trash"),
                                   attributes: .destructive) { _ in
-                self?.confirmDeleteApp(at: indexPath)
+                self?.confirmDeleteApp(app)
             }
             let currentRes = Self.resolution(for: app)
             let resActions = Self.resolutionOptions.map { opt in
@@ -328,7 +391,7 @@ class AppsListViewController: UIViewController,
                     Self.setResolution(w: opt.w, h: opt.h, for: app)
                 }
             }
-            let resMenu = UIMenu(title: "Screen Resolution",
+            let resMenu = UIMenu(title: "游戏分辨率",
                                   image: UIImage(systemName: "aspectratio"),
                                   children: resActions)
 
@@ -339,22 +402,32 @@ class AppsListViewController: UIViewController,
                     Self.setFpsLimit(opt.value, for: app)
                 }
             }
-            let fpsMenu = UIMenu(title: "FPS Limit",
-                                  subtitle: "High FPS may break some games",
+            let fpsMenu = UIMenu(title: "帧率上限",
+                                  subtitle: "过高帧率可能影响部分游戏",
                                   image: UIImage(systemName: "gauge.with.needle"),
                                   children: fpsActions)
 
             let settings = UIMenu(options: .displayInline, children: [toggle3D, resMenu, fpsMenu])
             let actions = UIMenu(options: .displayInline, children: [clearData, delete])
-            return UIMenu(children: [settings, actions])
+            let journal = UIAction(title: "查看运行记录", image: UIImage(systemName: "doc.text")) { _ in
+                let url = URL(fileURLWithPath: app.saveRoot).appendingPathComponent("last-session.json")
+                let message = (try? String(contentsOf: url, encoding: .utf8)) ?? "尚无运行记录。"
+                self?.showMessage("运行记录", message + "\n\nrunning 表示未记录正常结束，可能是系统终止或崩溃；这不是完整系统崩溃报告。")
+            }
+            var children: [UIMenuElement] = [settings, journal, actions]
+            if let message = app.record.migrationNotice {
+                children.append(UIAction(title: "旧存档迁移提示", image: UIImage(systemName: "exclamationmark.triangle")) { _ in
+                    self?.showMessage("旧存档迁移提示", message)
+                })
+            }
+            return UIMenu(children: children)
         })
     }
 
     // MARK: - Per-game settings
 
     private static func gameId(for app: AppInfo) -> String {
-        let jarName = URL(fileURLWithPath: app.path).deletingPathExtension().lastPathComponent
-        return jarName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+        app.record.id.uuidString
     }
 
     static func is3DSupersampling(for app: AppInfo) -> Bool {
@@ -399,7 +472,7 @@ class AppsListViewController: UIViewController,
     }
 
     private static let fpsLimitOptions: [(label: String, value: Int)] = [
-        ("Unlimited", 0),
+        ("不限制", 0),
         ("15 FPS",   15),
         ("20 FPS",   20),
         ("30 FPS",   30),
@@ -418,51 +491,53 @@ class AppsListViewController: UIViewController,
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.path
     }
 
-    private func confirmClearGameData(for app: AppInfo) {
-        let alert = UIAlertController(title: "Clear Game Data",
-                                       message: "Delete all save data for \(app.name)?",
-                                       preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { _ in
-            let gid = Self.gameId(for: app)
-            try? FileManager.default.removeItem(atPath: Self.documentsDirectory + "/Games Data/" + gid)
-        })
-        present(alert, animated: true)
-    }
-
-    private func confirmDeleteApp(at indexPath: IndexPath) {
-        let app = apps[indexPath.item]
-        let alert = UIAlertController(title: "Delete Game",
-                                       message: "Delete \(app.name) and all its save data?",
-                                       preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            guard let self else { return }
-            let gid = Self.gameId(for: app)
-            try? FileManager.default.removeItem(atPath: Self.documentsDirectory + "/Games Data/" + gid)
-            try? FileManager.default.removeItem(atPath: app.path)
-            self.springboardCollectionView.performBatchUpdates {
-                self.apps.remove(at: indexPath.item)
-                self.springboardCollectionView.deleteItems(at: [indexPath])
+    private func performLibraryAction(_ action: @escaping (GameLibrary) throws -> Void) {
+        let store = library
+        libraryQueue.async { [weak self] in
+            do {
+                try action(store)
+                DispatchQueue.main.async { self?.scanApps() }
+            } catch {
+                let message = error.localizedDescription
+                DispatchQueue.main.async { self?.scanApps(); self?.showMessage("操作未完成", message) }
             }
-            self.emptyStateLabel.isHidden = !self.apps.isEmpty
+        }
+    }
+
+    private func confirmClearGameData(for app: AppInfo) {
+        let alert = UIAlertController(title: "清除游戏数据", message: "清除“\(app.name)”的当前存档？建议先备份。旧版迁移备份会保留。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "清除", style: .destructive) { [weak self] _ in
+            self?.performLibraryAction { try $0.clearData(for: app.record) }
         })
         present(alert, animated: true)
     }
 
-    func collectionView(_ collectionView: UICollectionView,
-                        didSelectItemAt indexPath: IndexPath) {
-        let app = apps[indexPath.item]
+    private func confirmDeleteApp(_ app: AppInfo) {
+        let alert = UIAlertController(title: "删除游戏", message: "删除“\(app.name)”及其当前存档？导入与旧版迁移备份会保留。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            self?.performLibraryAction { try $0.delete(app.record) }
+        })
+        present(alert, animated: true)
+    }
 
-        let render3dScale = Self.is3DSupersampling(for: app) ? 3 : 1
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        launch(apps[indexPath.item])
+    }
+
+    private func launch(_ app: AppInfo) {
+        guard FileManager.default.fileExists(atPath: app.path) else {
+            showMessage("游戏文件缺失", "请重新导入这个 JAR，原存档仍然保留。")
+            return
+        }
         let res = Self.resolution(for: app)
-        let fps = Self.fpsLimit(for: app)
         let gameVC = GameViewController(jarPath: app.path, appName: app.name, appIcon: app.icon,
-                                         canvasWidth: res.w, canvasHeight: res.h,
-                                         render3dScale: render3dScale, fpsLimit: fps)
+            saveRoot: app.saveRoot, canvasWidth: res.w, canvasHeight: res.h,
+            render3dScale: Self.is3DSupersampling(for: app) ? 3 : 1, fpsLimit: Self.fpsLimit(for: app))
         gameVC.modalPresentationStyle = .fullScreen
 
-        let itemIndex = indexPath.item
+        let gameID = app.record.id
         let options = UIViewController.Transition.ZoomOptions()
         options.interactiveDismissShouldBegin = { _ in false }
         // Zoom lands on the placeholder icon centered in the game screen
@@ -476,7 +551,7 @@ class AppsListViewController: UIViewController,
 
         gameVC.preferredTransition = .zoom(options: options) {
             [weak self] _ in
-            guard let self,
+            guard let self, let itemIndex = self.apps.firstIndex(where: { $0.record.id == gameID }),
                   let cell = self.springboardCollectionView.cellForItem(
                       at: IndexPath(item: itemIndex, section: 0)) as? SpringboardCell else {
                 return nil

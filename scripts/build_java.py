@@ -65,6 +65,8 @@ def main():
     if args.target in ("test", "all"):
         compile_jar(ROOT / "test_midlet/src", ROOT / "J2MEEmulator/Resources/apps/test_midlet.jar",
                     [runtime, JARS / "j2me_api.jar"], ROOT / "test_midlet/MANIFEST.MF")
+        compile_jar(ROOT / "fixtures/studio_diagnostics/src", ROOT / "J2MEEmulator/Resources/apps/studio_diagnostics.jar",
+                    [runtime, JARS / "j2me_api.jar"], ROOT / "fixtures/studio_diagnostics/MANIFEST.MF")
 
 
 if __name__ == "__main__":

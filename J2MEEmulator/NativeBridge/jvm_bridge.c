@@ -76,7 +76,11 @@ int jvm_bridge_init(const char *res_root, const char *save_root, const char *mid
     sys_properties_set_c(g_jvm, "app.save.root", save_root);
     sys_properties_set_c(g_jvm, "microedition.platform", "Apple/iPhone");
     sys_properties_set_c(g_jvm, "microedition.encoding", "UTF-8");
-    sys_properties_set_c(g_jvm, "microedition.locale", "en");
+    sys_properties_set_c(g_jvm, "microedition.locale", "zh-CN");
+    const char *diagnostics = getenv("J2ME_STUDIO_SMOKE_TEST");
+    if (diagnostics && strcmp(diagnostics, "1") == 0) {
+        sys_properties_set_c(g_jvm, "j2me.studio.smoke", "1");
+    }
     sys_properties_set_c(g_jvm, "microedition.profiles", "MIDP-2.0");
     sys_properties_set_c(g_jvm, "microedition.configuration", "CLDC-1.1");
 

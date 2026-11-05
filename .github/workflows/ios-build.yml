@@ -35,9 +35,20 @@ jobs:
           python3 scripts/check_project.py 2>&1 | tee build/logs/source-check.log
           python3 -m unittest discover -s tests -v 2>&1 | tee build/logs/tests.log
           bash -n scripts/build_ios.sh j2me_api/build.sh test_midlet/build.sh
+          bash scripts/test_swift.sh 2>&1 | tee build/logs/swift-library-tests.log
       - name: Compile Java, miniJVM and iOS app; package unsigned IPA
         id: compile
         run: bash scripts/build_ios.sh
+      - name: Run the legal MIDlet on an iOS simulator
+        id: simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project J2MEEmulator.xcodeproj -scheme J2MEEmulator \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/SimulatorData -resultBundlePath build/SimulatorBuild.xcresult \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM= build \
+            2>&1 | tee build/logs/build-simulator.log
+          python3 scripts/test_simulator.py 2>&1 | tee build/logs/simulator-test.log
       - name: Upload actual build products
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,18 +65,21 @@ jobs:
           path: |
             build/logs/
             build/Build.xcresult/
+            build/SimulatorBuild.xcresult/
           if-no-files-found: warn
           retention-days: 14
       - name: Report verification boundaries
         if: always()
         env:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          SIMULATOR_OUTCOME: ${{ steps.simulator.outcome }}
         run: |
           {
             echo '## Verification status'
             echo "Build/packaging step: $COMPILE_OUTCOME"
             if test -f build/artifacts/J2MEStudio-device-app.zip; then echo '- Device .app: built'; else echo '- Device .app: NOT produced'; fi
             if test -f build/artifacts/J2MEStudio-unsigned.ipa; then echo '- Unsigned IPA: packaged and structure checked'; else echo '- Unsigned IPA: NOT produced'; fi
+            echo "- iOS simulator runtime test: $SIMULATOR_OUTCOME"
             echo '- Signing: NOT performed'
             echo '- iPhone runtime/compatibility: NOT tested'
           } >> "$GITHUB_STEP_SUMMARY"
