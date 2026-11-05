@@ -1,18 +1,20 @@
 # J2ME Studio — iPhone Java 游戏模拟器
 
-基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.2.0：已建立云构建，并实现中文游戏库、搜索、文件导入、独立存档与配置、长按组合输入、生命周期处理和免费中文诊断 MIDlet。实体 iPhone 与商业游戏兼容性仍待验收。
+基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.4.0：中文游戏库与文件导入、独立存档及 RMS 回退、长按组合输入、横竖屏与像素缩放、可编辑按键、运行日志，以及共享核心的独立游戏模式。实体 iPhone 与商业游戏兼容性仍待验收。
 
 ## 当前验证状态
 
-**最新 0.2.0：**[成功构建 #5](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006)、[IPA/.app/截图下载](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006/artifacts/13394495065)、[完整验收记录](docs/第二阶段验收.md)。26 项 Swift 检查及两次 iOS 模拟器中的真实 miniJVM 运行已通过；签名和实体 iPhone 未验证。
+**0.4.0：**[成功构建 #9](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650)、[两个 App 的 IPA/.app/截图](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650/artifacts/13398575560)、[第三、四阶段验收](docs/第三四阶段验收.md)。7 项 Python 测试、26 项游戏库/ZIP 检查、145 项显示/配置/RMS 检查通过；通用 App 的 8 个和独立 App 的 2 个真实 miniJVM 场景通过。两个真机目标均编译并封装 IPA，均未签名，实体 iPhone 未验证。
+
+第二阶段历史：[0.2.0 成功构建 #5](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006)、[验收记录](docs/第二阶段验收.md)。
 
 Windows 与 GitHub macOS Runner 均已实际编译 439 个 Java API 源文件及原仓库测试 MIDlet，源码检查、RMS 宿主测试和打包回归测试通过。[真实云构建 #1](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功编译 C/Objective-C/Swift，并上传真机 `.app` 及未签名 IPA。IPA 仍需要在 Windows 本地重新签名。**不能把 Java 编译、iOS 编译、IPA 封装、签名和 iPhone 运行视为同一结果。** 最新证据见 [第一阶段审查](docs/第一阶段审查.md)。
 
-## 第二阶段使用
+## 使用
 
 点击“+”导入合法 JAR；同名不同内容分别保存，同内容复用记录。长按游戏可配置分辨率、帧率和 3D 增强，查看运行记录或管理存档。左上角“测试 MIDlet”安装本项目自编、Apache-2.0 的中文诊断程序。旧 JAR 与存档迁移保留备份，歧义归属会提示。
 
-已在 iOS 模拟器中经真实 miniJVM 连续运行诊断程序两次，验证 Canvas、中文显示、合成组合输入、长按、暂停恢复与 RMS 启动计数 1 → 2。详细结果及设备验收步骤见 [第二阶段验收](docs/第二阶段验收.md)。
+游戏内“设置 → 显示与按键”选择方向与缩放，调整大小、透明度及位置；横竖屏分别保存。游戏菜单可备份/恢复 RMS 或导出日志。详细验证结果与独立 App 构建命令见 [第三、四阶段验收](docs/第三四阶段验收.md)。所有自动化游戏资源均为自编诊断 MIDlet；《诛仙伏魔录》尚无合法且验证过的 JAR，未打包。
 
 ## 仓库结构和构建
 
@@ -25,6 +27,7 @@ J2MEEmulator/Resources/     原版运行库 JAR、API JAR、SoundFont
 j2me_api/src/              Java ME API 源码
 test_midlet/               原仓库的测试 MIDlet，无商业游戏
 fixtures/studio_diagnostics/ 本项目自编的中文诊断 MIDlet
+standalone.example.json    独立 App 显示和专用按键配置示例
 scripts/                   跨平台 Java 编译、检查、真机构建及 IPA 封装
 .github/workflows/         macOS 自动构建
 ```
@@ -53,10 +56,10 @@ bash scripts/build_ios.sh
 
 ## 推送并开始云构建
 
-本地工程和 `J2MEStudio.bundle` 包含完整 Git 历史，基线提交与上游 `8afc8d808ca22160139333d1d58138c7dca91169` 相同。修复已推送至 `codex/phase2-library` 分支；后续修改后可在含 `.git` 的工程目录执行：
+本地工程和 `J2MEStudio.bundle` 包含完整 Git 历史，基线提交与上游 `8afc8d808ca22160139333d1d58138c7dca91169` 相同。最新开发代码在 `codex/studio-complete` 分支；后续修改后可在含 `.git` 的工程目录执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Branch codex/studio-complete
 ```
 
 若 Git Credential Manager 打开登录窗口，请本人在浏览器完成 GitHub 登录。脚本仅推送新分支，不强制覆盖远端 `main`。仓库 Actions 页面应出现 `iOS unsigned device build`；Fork 首次使用可能需要手动启用 Actions，然后选择该分支 Run workflow。公共仓库使用 GitHub 标准托管 Runner 通常免费，须以账号当时的额度和规则为准。[GitHub 计费说明](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions)

@@ -1,8 +1,8 @@
 # Windows → iPhone 安装与更新
 
-第二阶段最新版本为 **0.2.0 (2)**：[成功构建 #5](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006/artifacts/13394495065)。本地交付为 `cloud-build-5/device/J2MEStudio-unsigned.ipa`，推荐使用此版本；下文首轮构建链接仅保留作历史记录。更新前先备份完整 Documents。
+当前 **0.4.0 (4)**：[成功构建 #9](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650/artifacts/13398575560)。本地交付为 `cloud-build-9/device/J2MEStudio-unsigned.ipa`。Artifact 内另一份 `StudioDiagnostics-standalone-unsigned.ipa` 是点图标直接启动的独立诊断 App，使用不同 Bundle ID；通常先安装通用模拟器即可。
 
-前提：一次真实 Actions 构建成功，且产物中确实存在 `J2MEStudio-unsigned.ipa`。[首轮真实构建](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功生成；[下载 Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391216595) 后解压使用 IPA。本地交付 `cloud-build-1/device/J2MEStudio-unsigned.ipa` 为同一真实产物。
+已开始测试 0.2.0 的用户可以先完成基础验收，再覆盖更新 0.4.0，验证 RMS 是否保留。旧包保留在 `cloud-build-5/device`；不同云构建目录不可混淆。更新前先备份完整 Documents。
 
 ## 下载与辨别产物
 
@@ -29,10 +29,16 @@
 
 ## JAR 导入与验证
 
-打开 App 后用原版“+”按钮从文件 App 选择 `.jar`；也可通过 iTunes 文件共享或文件 App 将合法 JAR 放入应用 Documents，再刷新/重新进入列表。第二阶段游戏库与管理菜单已中文化。点击左上角“测试 MIDlet”可直接安装本项目自编的中文诊断程序。构建自动生成的测试 MIDlet 位于 `J2MEEmulator/Resources/apps/test_midlet.jar`，可另行导出导入进行验收；不能因为能导入就认为已能运行。
+打开 App 后用“+”按钮从文件 App 选择 `.jar`；也可通过 iTunes 文件共享或文件 App 将合法 JAR 放入应用 Documents，再刷新/重新进入列表。点击左上角“测试 MIDlet”可直接安装本项目自编的中文诊断程序，不需要寻找商业 JAR。Artifact 附带 `studio_diagnostics.jar`，可以保存到手机文件 App 后用“+”导入；同内容重复导入应复用已有游戏记录。原仓库 `test_midlet.jar` 也保留。不能因为能导入就认为已能运行。
+
+启动诊断游戏，依次检查中文、长按右方向、右方向加数字 5 的双指组合、松开后的停止重复、后台返回、退出重开和完整关闭 App 后的 RMS 次数增加。此诊断程序没有音频测试资源，不把它的通过计为音效验收。
+
+0.4.0 可在游戏“设置 → 显示与按键”测试自动旋转/锁定方向、三种缩放、按键大小/透明度、拖动组与逐键拖动/缩放。完成编辑后退出重开，确认专属配置仍保留。原始像素模式会有较小画面，这是 1:1 物理像素显示；可切回保持比例适应。
 
 ## 更新与备份
 
-更新前先备份应用整个 Documents，包括 `library.json`、`games`、`Saves`、`Games Data` 和 `Import Backups`；缺少 library.json 会丢失 UUID 与存档的对应关系。尽量使用相同 Apple ID、相同最终签名 Bundle ID、相同安装选项覆盖更新，保持数据容器。不要先删除旧 App；卸载通常会删除本地存档。重新签名工具改变 Bundle ID、换 Apple ID 或操作系统策略变化都可能影响覆盖安装和数据保留，必须先备份。
+更新前先备份应用整个 Documents，包括 `library.json`、`games`、`Saves`、`Configurations`、`Backups`，以及存在时的 `Games Data` 和 `Import Backups`；缺少 library.json 会丢失 UUID 与存档的对应关系。可用 iTunes 文件共享将应用文档保存到电脑；若文件 App 能看到应用文件夹，也可将完整内容复制到别处，并确认文件数量和关键索引存在。尽量使用相同 Apple ID、相同最终签名 Bundle ID、相同安装选项覆盖更新，保持数据容器。不要先删除旧 App；卸载通常会删除本地存档。重新签名工具改变 Bundle ID、换 Apple ID 或操作系统策略变化都可能影响覆盖安装和数据保留，必须先备份。
+
+游戏列表的 RMS 快照位于同一应用沙盒，不能替代卸载前的电脑备份。长按游戏可导出当前及历史运行日志。若 App 无法打开，在 iPhone“设置 → 隐私与安全性 → 分析与改进 → 分析数据”寻找对应时间的 J2MEStudio/JetsamEvent 报告；分享前检查并遮去个人信息。完整系统报告需设备提供，App 内日志不保证包含原生堆栈。
 
 本阶段改用了项目自己的 Bundle ID `org.j2mestudio.emulator`，若之前安装过上游 JarBox，它可能作为另一 App 安装；先手动备份，不承诺自动迁移。第二阶段已采用 UUID 隔离；旧版中文名称碰撞会提示并保留原件，不自动猜测存档归属。
