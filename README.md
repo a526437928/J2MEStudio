@@ -1,10 +1,10 @@
 # J2ME Studio — iPhone Java 游戏模拟器
 
-基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.4.2：中文游戏库与文件导入、独立存档及 RMS 回退、长按组合输入、横竖屏与像素缩放、可编辑按键、运行日志，以及共享核心的独立游戏模式。本版修复方向盘斜向误触数字技能：默认采用两方向组合，并按游戏保留独立方向和旧八向模式。用户已在 iPhone 17 Pro / iOS 27.0 安装旧版，确认组合操作及诊断 RMS 退出重开加一；已导入《诛仙伏魔录》并反馈斜向误触，目前未反馈其他异常。0.4.2 真机效果、音频、3D 及游戏自身存档仍需分别验证。
+基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.4.2：中文游戏库与文件导入、独立存档及 RMS 回退、长按组合输入、横竖屏与像素缩放、可编辑按键、运行日志，以及共享核心的独立游戏模式。本版修复方向盘斜向误触数字技能：默认采用两方向组合，并按游戏保留独立方向和旧八向模式。用户已在 iPhone 17 Pro / iOS 27.0 安装旧版，确认组合操作及诊断 RMS 退出重开加一；已导入《诛仙伏魔录》，并在收到 0.4.2 后反馈“测试了似乎没什么问题了”，斜向修复初步通过。音频、3D 及游戏自身存档等专项仍需分别验证。
 
 ## 当前验证状态
 
-**0.4.2：**[成功构建 #11](https://github.com/a526437928/J2MEStudio/actions/runs/42025151337)、[两个 App 的 IPA/.app/截图](https://github.com/a526437928/J2MEStudio/actions/runs/42025151337/artifacts/13414442134)、[方向盘斜向修复报告](docs/方向盘斜向修复.md)。8 项 Python 测试、26 项游戏库/ZIP 检查、176 项显示/配置/RMS/方向映射检查及 Java 宿主回归通过；通用 App 的 8 个和独立 App 的 2 个真实 miniJVM 场景通过。全部正常场景确认四组斜向到达 Java、技能数字键误触为 0、最后方向全部释放。两个真机目标均编译并封装 IPA，CI 产物均未签名，0.4.2 真机操作未复验。
+**0.4.2：**[成功构建 #11](https://github.com/a526437928/J2MEStudio/actions/runs/42025151337)、[两个 App 的 IPA/.app/截图](https://github.com/a526437928/J2MEStudio/actions/runs/42025151337/artifacts/13414442134)、[方向盘斜向修复报告](docs/方向盘斜向修复.md)。8 项 Python 测试、26 项游戏库/ZIP 检查、176 项显示/配置/RMS/方向映射检查及 Java 宿主回归通过；通用 App 的 8 个和独立 App 的 2 个真实 miniJVM 场景通过。全部正常场景确认四组斜向到达 Java、技能数字键误触为 0、最后方向全部释放。两个真机目标均编译并封装 IPA，CI 产物均未签名；用户已反馈斜向修复初步通过，后续按[实际游戏验收步骤](docs/实际游戏验收步骤.md)逐项记录存档、恢复与声音。
 
 0.4.1 历史：[构建 #10](https://github.com/a526437928/J2MEStudio/actions/runs/41999492045)、[组合诊断修复及用户真机反馈](docs/真机问题记录.md)。
 
