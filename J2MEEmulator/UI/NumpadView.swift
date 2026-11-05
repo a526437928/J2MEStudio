@@ -117,6 +117,12 @@ class NumpadView: UIView {
 
     // MARK: - Key events with repeat
 
+    /// CI follows the same UIButton target/action used by a real touch.
+    func diagnosticSetKey(_ code: Int32, pressed: Bool) {
+        let button = subviews.compactMap { $0 as? UIButton }.first { $0.tag == Int(code) }
+        button?.sendActions(for: pressed ? .touchDown : .touchUpInside)
+    }
+
     @objc private func down(_ sender: UIButton) {
         guard !isEditingLayout else { return }
         let code = Int32(sender.tag)

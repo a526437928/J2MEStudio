@@ -99,6 +99,7 @@ def main():
                         if result_file.exists() and journal.exists() and json.loads(journal.read_text()).get("status") == "finished":
                             result = json.loads(result_file.read_text())
                             assert result["pass"] and result["launches"] == expected, result
+                            assert result["rightKeyCode"] == 54, "Exercise the actual numeric-6 joystick mapping"
                             geometry = json.loads((save / "diagnostic-input-layout.json").read_text())
                             assert geometry["valid"] and geometry["scaling"] == scaling, geometry
                             assert geometry["orientation"] == orientation + ".", geometry
@@ -122,7 +123,7 @@ def main():
         assert len(saves()) == 1, "Standalone app should launch only its embedded game"
     (ROOT / f"build/logs/{prefix}-status.json").write_text(json.dumps({
         "simulator": device["name"], "runtime": "iOS 26.2", "bundle": args.bundle,
-        "cases": results, "iphone_tested": False, "input": "synthetic production-controller events"
+        "cases": results, "iphone_tested": False, "input": "synthetic joystick geometry and UIButton target/action; no physical touch claim"
     }, indent=2))
     print(f"PASS: {prefix} actual miniJVM runtime, display modes, input, persistence and captured logs")
 

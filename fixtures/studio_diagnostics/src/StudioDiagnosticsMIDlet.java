@@ -57,6 +57,7 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
                 + ",\"rms\":" + rmsOK + ",\"paints\":" + canvas.paints
                 + ",\"pressed\":" + canvas.pressed + ",\"released\":" + canvas.released
                 + ",\"repeated\":" + canvas.repeated + ",\"combo\":" + canvas.combo
+                + ",\"rightKeyCode\":" + canvas.rightKeyCode
                 + ",\"directionAfterFive\":" + canvas.directionAfterFive
                 + ",\"starts\":" + starts + ",\"pauses\":" + pauses + "}";
             FileOutputStream out = new FileOutputStream(System.getProperty("app.save.root") + "/diagnostic-result.json");
@@ -75,33 +76,46 @@ public final class StudioDiagnosticsMIDlet extends MIDlet implements Runnable, C
 
     private final class TestCanvas extends Canvas {
         volatile int paints, pressed, released, repeated;
+        volatile int rightKeyCode;
         volatile boolean right, five, combo, fiveWasReleased, directionAfterFive;
+        private boolean numericRight, navigationRight;
         private String lastKey = "请按方向键、数字键和软键";
         protected void paint(Graphics graphics) {
             graphics.setColor(0x102030); graphics.fillRect(0, 0, getWidth(), getHeight());
             graphics.setFont(Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_MEDIUM));
             graphics.setColor(0xffffff);
             String[] lines = {"J2ME Studio 中文测试", "你好，Java 手机游戏", "RMS 启动次数：" + launches,
-                "存档：" + (rmsOK ? "正常" : "失败"), lastKey,
+                "存档：" + (rmsOK ? "正常（自动保存）" : "失败"), lastKey,
                 "按下/松开：" + pressed + "/" + released,
                 "长按重复：" + repeated, "组合按键：" + (combo ? "已收到" : "待测试"),
-                "暂停/恢复：" + pauses + "/" + starts};
+                "暂停/恢复：" + pauses + "/" + starts,
+                "退出重开，存档次数应加一"};
             for (int i = 0; i < lines.length; i++) graphics.drawString(lines[i], 8, 8 + i * 25, Graphics.TOP | Graphics.LEFT);
             paints++;
         }
         protected void keyPressed(int code) {
-            pressed++; if (code == -4) right = true; if (code == 53) five = true;
+            pressed++;
+            setRight(code, true);
+            if (getGameAction(code) == RIGHT) rightKeyCode = code;
+            if (code == KEY_NUM5) five = true;
             if (right && five) combo = true;
             lastKey = "按键码：" + code; repaint();
         }
         protected void keyReleased(int code) {
-            released++; if (code == -4) right = false;
-            if (code == 53) { five = false; fiveWasReleased = true; }
+            released++; setRight(code, false);
+            if (code == KEY_NUM5) { five = false; fiveWasReleased = true; }
             repaint();
         }
         protected void keyRepeated(int code) {
-            repeated++; if (code == -4 && fiveWasReleased && right) directionAfterFive = true;
+            repeated++; if (getGameAction(code) == RIGHT && fiveWasReleased && right) directionAfterFive = true;
             repaint();
+        }
+        private void setRight(int code, boolean held) {
+            // The original eight-way joystick emits numeric 6; MIDP also has
+            // a dedicated navigation-right key. Keep their held states separate.
+            if (code == KEY_NUM6) numericRight = held;
+            if (code == KEY_RIGHT) navigationRight = held;
+            right = numericRight || navigationRight;
         }
     }
 }

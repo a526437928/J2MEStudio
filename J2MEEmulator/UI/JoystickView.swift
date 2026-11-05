@@ -118,6 +118,16 @@ class JoystickView: UIView {
 
     // MARK: - Joystick logic
 
+    /// CI drives the production direction calculation, not a hard-coded keycode.
+    func diagnosticSetRight(pressed: Bool) {
+        guard !isEditingLayout else { return }
+        if pressed {
+            layoutIfNeeded()
+            update(at: CGPoint(x: baseView.frame.midX + baseView.bounds.width * 0.4,
+                               y: baseView.frame.midY))
+        } else { reset() }
+    }
+
     private func update(at point: CGPoint) {
         let cx = baseView.center.x
         let cy = baseView.center.y

@@ -137,16 +137,16 @@ class GameViewController: UIViewController {
                     // CI screenshot timing follows a displayed frame, not app-launch time.
                     try? Data([1]).write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-frame-ready"))
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    KeyInputController.shared.press(-4)
-                    KeyInputController.shared.press(53)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.joystickView?.diagnosticSetRight(pressed: true)
+                    self?.numpadView?.diagnosticSetKey(53, pressed: true)
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    KeyInputController.shared.release(53)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.numpadView?.diagnosticSetKey(53, pressed: false)
                     // The direction key must continue repeating after releasing 5.
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                    KeyInputController.shared.release(-4)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+                    self?.joystickView?.diagnosticSetRight(pressed: false)
                     j2me_input_post_key(20, 0)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { j2me_input_post_key(21, 0) }
