@@ -145,6 +145,9 @@ class GameViewController: UIViewController {
                     // CI screenshot timing follows a displayed frame, not app-launch time.
                     try? Data([1]).write(to: URL(fileURLWithPath: root).appendingPathComponent("diagnostic-frame-ready"))
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    self?.captureDiagnosticHierarchy()
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                     self?.joystickView?.diagnosticSetRight(pressed: true)
                     self?.numpadView?.diagnosticSetKey(53, pressed: true)
@@ -403,6 +406,25 @@ class GameViewController: UIViewController {
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: .prettyPrinted) {
             try? data.write(to: URL(fileURLWithPath: saveRoot).appendingPathComponent("diagnostic-input-layout.json"))
         }
+    }
+
+    private func captureDiagnosticHierarchy() {
+        guard ProcessInfo.processInfo.arguments.contains("--studio-smoke-test"),
+              view.window != nil, view.bounds.width > 0, view.bounds.height > 0 else { return }
+        // Capture the actual UIKit layer hierarchy after a presented frame.
+        // This is not a system-composited screenshot or physical-device proof.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = view.window?.screen.scale ?? 3
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { context in
+            view.layer.render(in: context.cgContext)
+        }
+        do {
+            guard let png = image.pngData() else { throw CocoaError(.fileWriteUnknown) }
+            let root = URL(fileURLWithPath: saveRoot)
+            try png.write(to: root.appendingPathComponent("diagnostic-screen.png"), options: .atomic)
+            try Data([1]).write(to: root.appendingPathComponent("diagnostic-capture-done"), options: .atomic)
+        } catch { print("[Diagnostics] UIKit hierarchy capture failed: \(error)") }
     }
 
     // MARK: - Soft keys

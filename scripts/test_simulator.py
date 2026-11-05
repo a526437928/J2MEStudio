@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 import time
 import uuid
 
@@ -95,7 +96,7 @@ def main():
     for number, (resource, expected, orientation, scaling, kind) in enumerate(cases, 1):
         save = saves().get(resource + ".jar")
         if save:
-            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json", "diagnostic-capture-done", "last-performance.json"]:
+            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json", "diagnostic-capture-done", "diagnostic-screen.png", "last-performance.json"]:
                 (save / name).unlink(missing_ok=True)
         other = saves().get("studio_diagnostics_secondary.jar")
         other_hashes = rms_hashes(other) if other else {}
@@ -110,16 +111,17 @@ def main():
             process = subprocess.Popen(["xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty",
                 udid, args.bundle, *options], env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
-                start = time.monotonic(); frame_ready_at = None; screenshot = False
+                start = time.monotonic(); screenshot = False
                 while time.monotonic() - start < 75:
                     save = saves().get(resource + ".jar")
                     if save:
-                        if frame_ready_at is None and (save / "diagnostic-frame-ready").exists(): frame_ready_at = time.monotonic()
-                        if kind != "crash" and not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
-                            # The test MIDlet stays on its real Canvas until this
-                            # acknowledgement, even on a cold/slow simulator.
-                            run("io", udid, "screenshot", str(ROOT / f"build/artifacts/{prefix}-{number}-{orientation}-{scaling}.png"), timeout=25)
-                            (save / "diagnostic-capture-done").write_text("captured")
+                        capture = save / "diagnostic-screen.png"
+                        if kind != "crash" and not screenshot and capture.exists():
+                            header = capture.read_bytes()[:24]
+                            assert header[:8] == b"\x89PNG\r\n\x1a\n", "Invalid UIKit hierarchy capture"
+                            width, height = struct.unpack(">II", header[16:24])
+                            assert (width > height) == (orientation == "landscape") and min(width, height) > 0, (width, height, orientation)
+                            shutil.copyfile(capture, ROOT / f"build/artifacts/{prefix}-{number}-{orientation}-{scaling}.png")
                             screenshot = True
                         native = save / "last-run.log"
                         if kind == "crash" and native.exists() and "[SIGNAL]" in native.read_text(errors="replace"):
@@ -148,7 +150,7 @@ def main():
                             geometry = json.loads((save / "diagnostic-input-layout.json").read_text())
                             assert geometry["valid"] and geometry["scaling"] == scaling, geometry
                             assert geometry["orientation"] == orientation + ".", geometry
-                            assert screenshot, "No screenshot of a displayed frame"
+                            assert screenshot, "No UIKit hierarchy capture after a presented frame"
                             text = native.read_text(errors="replace")
                             assert "MIDlet lifecycle complete" in text and "[Studio diagnostics]" in text, "Missing captured JVM logs"
                             shutil.copyfile(native, ROOT / f"build/logs/{prefix}-native-{number}.log")
@@ -178,7 +180,8 @@ def main():
         assert len(saves()) == 1, "Standalone app should launch only its embedded game"
     (ROOT / f"build/logs/{prefix}-status.json").write_text(json.dumps({
         "simulator": device["name"], "runtime": "iOS 26.2", "bundle": args.bundle,
-        "cases": results, "iphone_tested": False, "input": "synthetic joystick geometry and UIButton target/action; no physical touch claim"
+        "cases": results, "iphone_tested": False, "input": "synthetic joystick geometry and UIButton target/action; no physical touch claim",
+        "capture": "UIKit layer hierarchy after presentation; not a system-composited screenshot"
     }, indent=2))
     print(f"PASS: {prefix} actual miniJVM runtime, display modes, input, persistence and captured logs")
 
