@@ -32,8 +32,27 @@ def main():
         raise RuntimeError("An installed iOS 26.2 iPhone simulator is required")
     device = sorted(candidates, key=lambda d: d["name"] != "iPhone 17 Pro")[0]
     udid = device["udid"]
-    if device["state"] != "Booted": run("boot", udid)
-    run("bootstatus", udid, "-b", timeout=180)
+    # Bring up the simulator's display frontend as well as CoreSimulator. The
+    # display link needs a live display; a pre-created device may also stall on
+    # its first cold boot on a hosted runner. Retain every boot attempt.
+    developer = Path(subprocess.check_output(["xcode-select", "-p"], text=True).strip())
+    for attempt in [1, 2]:
+        subprocess.run(["open", "-a", str(developer / "Applications/Simulator.app"),
+                        "--args", "-CurrentDeviceUDID", udid], check=True)
+        boot_log = ROOT / f"build/logs/{prefix}-boot-{attempt}.log"
+        try:
+            output = run("bootstatus", udid, "-b", timeout=180)
+            boot_log.write_text(output)
+            print(f"PASS {prefix} simulator boot attempt {attempt}", flush=True)
+            break
+        except subprocess.TimeoutExpired as error:
+            output = error.output or b""
+            if isinstance(output, bytes): output = output.decode(errors="replace")
+            boot_log.write_text(output + "\nBOOT TIMEOUT after 180 seconds\n")
+            (ROOT / f"build/logs/{prefix}-boot-{attempt}-devices.json").write_text(run("list", "devices", "--json"))
+            print(f"Simulator boot attempt {attempt} timed out; original output retained", flush=True)
+            if attempt == 2: raise
+            subprocess.run(["xcrun", "simctl", "shutdown", udid], check=False, timeout=30)
     run("install", udid, str(args.app.resolve()))
     documents = Path(run("get_app_container", udid, args.bundle, "data")) / "Documents"
     if args.standalone:
