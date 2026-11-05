@@ -1,14 +1,16 @@
 # Windows → iPhone 安装与更新
 
-当前 **0.4.3 (7)**：[成功构建 #18](https://github.com/a526437928/J2MEStudio/actions/runs/42053376821)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/42053376821/artifacts/13429237159)。本地交付为 `cloud-build-18/device/J2MEStudio-unsigned.ipa`。Artifact 内另一份 `StudioDiagnostics-standalone-unsigned.ipa` 是点图标直接启动的独立诊断 App，使用不同 Bundle ID；本轮只需更新通用模拟器。
+当前 **0.4.4 (8)**：[成功构建 #19](https://github.com/a526437928/J2MEStudio/actions/runs/42067104128)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/42067104128/artifacts/13433259840)。本地交付为 `cloud-build-19/device/J2MEStudio-unsigned.ipa`。Artifact 内另一份 `StudioDiagnostics-standalone-unsigned.ipa` 是点图标直接启动的独立诊断 App，使用不同 Bundle ID；本轮只需更新通用模拟器。
 
 已开始测试旧版的用户先备份完整 Documents，再用相同 Apple ID 和最终 Bundle ID 覆盖更新，不卸载旧 App。旧包保留在 `cloud-build-5/device` 和 `cloud-build-9/device`；不同云构建目录不可混淆。
+
+0.4.4 修正 Font 测量与 CoreText 绘制不一致造成的靠右中文裁切。覆盖后直接启动已有两款游戏，进入之前裁切的菜单检查“退出”，无需重新导入 JAR、改分辨率或关闭 3D。自编诊断在云端每个正常场景通过 195 项字体及像素检查；用户实际游戏仍需真机确认，见[中文菜单修复报告](中文菜单裁切修复.md)。
 
 0.4.3 优化显示帧积压、空闲唤醒和不可见动画，增加低频率 CPU 与热状态日志；真机发热改善待用户复测。更新后先保持原帧率与场景比较，如果仍热，再保存退出，在游戏库长按游戏→“帧率上限”→30 FPS 后重开；若游戏动作明显变慢，恢复原值。不要将模拟器 CPU 或主观手感换算成已测得的手机温度。排查说明见[性能报告](发热与性能排查.md)。
 
 0.4.2 的方向盘修复保留。保持原签名账号、最终 Bundle ID 和安装选项，将新版 IPA 拖入 Sideloadly，点击 Start 覆盖更新；不先卸载。更新后直接打开已有《诛仙伏魔录》，无需删除或重新导入 JAR。“设置 → 显示与按键 → 方向盘模式”的默认“数字方向”避免从斜向发出 1/3/7/9 技能数字键；右侧技能键保留。此前用户已反馈该修复初步通过，详见[方向盘修复报告](方向盘斜向修复.md)。
 
-如需诊断回归，再点“测试 MIDlet”，选择 **J2ME Studio 诊断 0.4.2**。旧诊断条目及旧存档保留，不能拿旧程序验证新增诊断；新诊断的计数从其自身首次值开始比较。仅测试已有游戏的斜向修复不需要此步骤。
+如需诊断回归，再点“测试 MIDlet”，选择 **J2ME Studio 诊断 0.4.4**，底部灰条应完整显示“选择 / 退出”。旧诊断条目及旧存档保留，不能拿旧程序验证新增诊断；新诊断的计数从其自身首次值开始比较。仅测试已有游戏的字体修复不需要此步骤。
 
 ## 下载与辨别产物
 
