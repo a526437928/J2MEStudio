@@ -1,6 +1,6 @@
 # J2ME Studio — iPhone Java 游戏模拟器
 
-基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.4.1：中文游戏库与文件导入、独立存档及 RMS 回退、长按组合输入、横竖屏与像素缩放、可编辑按键、运行日志，以及共享核心的独立游戏模式。本版修复方向盘数字 6 的组合诊断误判；旧版已在用户 iPhone 签名安装并进入游戏库，新版双指触摸与 RMS 计数仍待复验。
+基于 [ccbkv/J2MEEmulator-iOS](https://github.com/ccbkv/J2MEEmulator-iOS)，保留原有 Swift/UIKit、Objective-C/C 桥接、miniJVM 解释器、M3G、MascotCapsule、音频和 Java API。当前版本 0.4.1：中文游戏库与文件导入、独立存档及 RMS 回退、长按组合输入、横竖屏与像素缩放、可编辑按键、运行日志，以及共享核心的独立游戏模式。本版修复方向盘数字 6 的组合诊断误判；用户已在 iPhone 17 Pro / iOS 27.0 签名安装，并反馈组合操作及正常退出重开的 RMS 计数通过。外部 JAR 真机导入、音频、3D 及商业游戏兼容性待验证。
 
 ## 当前验证状态
 
