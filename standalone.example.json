@@ -1,0 +1,14 @@
+{
+  "screenWidth": 240,
+  "screenHeight": 320,
+  "fps": 60,
+  "render3dScale": 1,
+  "controls": {
+    "orientation": "portrait",
+    "scaling": "integer",
+    "keyScale": 1,
+    "opacity": 0.9,
+    "controls": {},
+    "keys": {}
+  }
+}

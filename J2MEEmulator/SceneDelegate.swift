@@ -23,8 +23,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
 
-        let vc = AppsListViewController()
-        libraryController = vc
+        let vc: UIViewController
+        if let profile = Bundle.main.url(forResource: "standalone", withExtension: "json") {
+            vc = StandaloneLauncherViewController(profileURL: profile)
+        } else {
+            let library = AppsListViewController(); libraryController = library; vc = library
+        }
         let nav = OrientationNavigationController(rootViewController: vc)
         nav.navigationBar.prefersLargeTitles = false
 
@@ -40,7 +44,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.rootViewController = nav
         window?.makeKeyAndVisible()
         if !connectionOptions.urlContexts.isEmpty {
-            vc.importGames(connectionOptions.urlContexts.map(\.url))
+            libraryController?.importGames(connectionOptions.urlContexts.map(\.url))
         }
     }
 

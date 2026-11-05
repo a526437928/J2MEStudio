@@ -49,6 +49,29 @@ jobs:
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM= build \
             2>&1 | tee build/logs/build-simulator.log
           python3 scripts/test_simulator.py 2>&1 | tee build/logs/simulator-test.log
+      - name: Build and run the standalone diagnostic app
+        id: standalone
+        run: |
+          set -o pipefail
+          python3 scripts/prepare_standalone.py \
+            --jar J2MEEmulator/Resources/apps/studio_diagnostics.jar \
+            --output build/StandaloneSource --name "Studio 诊断独立版" \
+            --bundle-id org.j2mestudio.diagnostics --confirm-rights \
+            --profile standalone.example.json
+          BUNDLE_ID=org.j2mestudio.diagnostics DISPLAY_NAME="Studio 诊断独立版" \
+            bash build/StandaloneSource/scripts/build_ios.sh 2>&1 | tee build/logs/standalone-build.log
+          cp build/StandaloneSource/build/artifacts/J2MEStudio-unsigned.ipa build/artifacts/StudioDiagnostics-standalone-unsigned.ipa
+          cp build/StandaloneSource/build/artifacts/J2MEStudio-device-app.zip build/artifacts/StudioDiagnostics-standalone-app.zip
+          xcodebuild -project build/StandaloneSource/J2MEEmulator.xcodeproj -scheme J2MEEmulator \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/StandaloneSimulator -resultBundlePath build/StandaloneSimulator.xcresult \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM= \
+            PRODUCT_BUNDLE_IDENTIFIER=org.j2mestudio.diagnostics INFOPLIST_KEY_CFBundleDisplayName="Studio 诊断独立版" build \
+            2>&1 | tee build/logs/standalone-simulator-build.log
+          python3 scripts/test_simulator.py --standalone --bundle org.j2mestudio.diagnostics \
+            --app build/StandaloneSimulator/Build/Products/Release-iphonesimulator/J2MEStudio.app \
+            2>&1 | tee build/logs/standalone-test.log
+          shasum -a 256 build/artifacts/*.ipa build/artifacts/*.jar build/artifacts/*app.zip > build/logs/SHA256SUMS.txt
       - name: Upload actual build products
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,6 +89,8 @@ jobs:
             build/logs/
             build/Build.xcresult/
             build/SimulatorBuild.xcresult/
+            build/StandaloneSimulator.xcresult/
+            build/StandaloneSource/build/Build.xcresult/
           if-no-files-found: warn
           retention-days: 14
       - name: Report verification boundaries
@@ -73,6 +98,7 @@ jobs:
         env:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           SIMULATOR_OUTCOME: ${{ steps.simulator.outcome }}
+          STANDALONE_OUTCOME: ${{ steps.standalone.outcome }}
         run: |
           {
             echo '## Verification status'
@@ -80,6 +106,7 @@ jobs:
             if test -f build/artifacts/J2MEStudio-device-app.zip; then echo '- Device .app: built'; else echo '- Device .app: NOT produced'; fi
             if test -f build/artifacts/J2MEStudio-unsigned.ipa; then echo '- Unsigned IPA: packaged and structure checked'; else echo '- Unsigned IPA: NOT produced'; fi
             echo "- iOS simulator runtime test: $SIMULATOR_OUTCOME"
+            echo "- Standalone app build/runtime: $STANDALONE_OUTCOME"
             echo '- Signing: NOT performed'
             echo '- iPhone runtime/compatibility: NOT tested'
           } >> "$GITHUB_STEP_SUMMARY"

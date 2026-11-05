@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Run the actual C miniJVM + Java MIDlet in an iOS simulator twice.
-
-Synthetic input verifies the event pipeline; this is not an iPhone touch test.
-"""
+"""Execute the actual UIKit app, C miniJVM, logs and Java diagnostics on iOS."""
+import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = "org.j2mestudio.emulator"
 
 
 def run(*args, **kwargs):
@@ -19,72 +18,110 @@ def run(*args, **kwargs):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bundle", default="org.j2mestudio.emulator")
+    parser.add_argument("--app", type=Path, default=ROOT / "build/SimulatorData/Build/Products/Release-iphonesimulator/J2MEStudio.app")
+    parser.add_argument("--standalone", action="store_true")
+    args = parser.parse_args()
+    prefix = "standalone" if args.standalone else "emulator"
     os.chdir(ROOT)
     devices = json.loads(run("list", "devices", "available", "--json"))["devices"]
     candidates = [d for runtime, items in devices.items() if runtime.endswith("iOS-26-2")
-                  for d in items if d["name"] == "iPhone 17" and d.get("isAvailable")]
+                  for d in items if d["name"] in ["iPhone 17 Pro", "iPhone 17"] and d.get("isAvailable")]
     if not candidates:
-        raise RuntimeError("The selected Xcode requires the installed iOS 26.2 / iPhone 17 simulator")
-    device = candidates[0]
+        raise RuntimeError("An installed iOS 26.2 iPhone simulator is required")
+    device = sorted(candidates, key=lambda d: d["name"] != "iPhone 17 Pro")[0]
     udid = device["udid"]
-    if device["state"] != "Booted":
-        run("boot", udid)
+    if device["state"] != "Booted": run("boot", udid)
     run("bootstatus", udid, "-b", timeout=180)
-    app = ROOT / "build/SimulatorData/Build/Products/Release-iphonesimulator/J2MEStudio.app"
-    run("install", udid, str(app))
-    container = Path(run("get_app_container", udid, BUNDLE, "data"))
-    documents = container / "Documents"
+    run("install", udid, str(args.app.resolve()))
+    documents = Path(run("get_app_container", udid, args.bundle, "data")) / "Documents"
+    if args.standalone:
+        cases = [("embedded", 1, "portrait", "integer", "normal"), ("embedded", 2, "landscape", "original", "normal")]
+    else:
+        cases = [("studio_diagnostics", 1, "landscape", "fit", "normal"),
+                 ("studio_diagnostics", 2, "portrait", "integer", "normal"),
+                 ("studio_diagnostics", 3, "landscape", "original", "normal"),
+                 ("studio_diagnostics_secondary", 1, "portrait", "fit", "normal"),
+                 ("studio_diagnostics", 4, "landscape", "fit", "crash"),
+                 ("studio_diagnostics", 5, "portrait", "integer", "normal"),
+                 ("studio_diagnostics_secondary", 2, "landscape", "fit", "normal"),
+                 ("studio_diagnostics", 5, "portrait", "fit", "restore")]
     results = []
-    for iteration in [1, 2]:
-        if (documents / "library.json").exists():
-            index = json.loads((documents / "library.json").read_text())
-            for game in index["games"]:
-                save = documents / "Saves" / str(uuid.UUID(game["id"])).upper()
-                (save / "diagnostic-result.json").unlink(missing_ok=True)
-                (save / "diagnostic-frame-ready").unlink(missing_ok=True)
-                (save / "diagnostic-input-layout.json").unlink(missing_ok=True)
+
+    def saves():
+        index = documents / "library.json"
+        if not index.exists(): return {}
+        return {game["fileName"]: documents / "Saves" / str(uuid.UUID(game["id"])).upper()
+                for game in json.loads(index.read_text())["games"]}
+
+    def rms_hashes(folder):
+        return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.glob("rms/*") if p.is_file()}
+
+    for number, (resource, expected, orientation, scaling, kind) in enumerate(cases, 1):
+        save = saves().get(resource + ".jar")
+        if save:
+            for name in ["diagnostic-result.json", "diagnostic-frame-ready", "diagnostic-input-layout.json"]:
+                (save / name).unlink(missing_ok=True)
+        other = saves().get("studio_diagnostics_secondary.jar")
+        other_hashes = rms_hashes(other) if other else {}
         env = {**os.environ, "SIMCTL_CHILD_J2ME_STUDIO_SMOKE_TEST": "1"}
-        logpath = ROOT / f"build/logs/simulator-launch-{iteration}.log"
+        options = ["--studio-smoke-test", "--studio-fixture=" + resource,
+                   "--play-orientation=" + orientation, "--play-scaling=" + scaling]
+        if kind == "crash": options.append("--studio-crash-test")
+        if kind == "restore": options.append("--studio-restore-latest")
+        logpath = ROOT / f"build/logs/{prefix}-launch-{number}.log"
         with logpath.open("w") as log:
             process = subprocess.Popen(["xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty",
-                udid, BUNDLE, "--studio-smoke-test"], env=env, stdout=log, stderr=subprocess.STDOUT)
+                udid, args.bundle, *options], env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
-                start = time.monotonic()
-                screenshot = False
-                frame_ready_at = None
+                start = time.monotonic(); frame_ready_at = None; screenshot = False
                 while time.monotonic() - start < 75:
-                    if frame_ready_at is None and list(documents.glob("Saves/*/diagnostic-frame-ready")):
-                        frame_ready_at = time.monotonic()
-                    if not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
-                        run("io", udid, "screenshot", str(ROOT / f"build/artifacts/diagnostics-{iteration}.png"))
-                        screenshot = True
-                    files = list(documents.glob("Saves/*/diagnostic-result.json"))
-                    if files:
-                        result = json.loads(files[0].read_text())
-                        journal = files[0].with_name("last-session.json")
-                        if journal.exists() and json.loads(journal.read_text()).get("status") == "finished":
-                            assert result["pass"], result
-                            assert result["launches"] == iteration, result
-                            assert screenshot, "No screenshot of a displayed game frame"
-                            geometry = json.loads(files[0].with_name("diagnostic-input-layout.json").read_text())
-                            assert geometry["valid"], "UIKit key geometry overlaps or extends outside the keypad"
+                    save = saves().get(resource + ".jar")
+                    if save:
+                        if frame_ready_at is None and (save / "diagnostic-frame-ready").exists(): frame_ready_at = time.monotonic()
+                        if not screenshot and frame_ready_at is not None and time.monotonic() - frame_ready_at > 0.8:
+                            run("io", udid, "screenshot", str(ROOT / f"build/artifacts/{prefix}-{number}-{orientation}-{scaling}.png"))
+                            screenshot = True
+                        native = save / "last-run.log"
+                        if kind == "crash" and native.exists() and "[SIGNAL]" in native.read_text(errors="replace"):
+                            assert other is not None and rms_hashes(other) == other_hashes, "Crash changed another game's RMS"
+                            assert json.loads((save / "last-session.json").read_text())["status"] == "running"
+                            shutil.copyfile(native, ROOT / f"build/logs/{prefix}-native-{number}.log")
+                            results.append({"fatal_signal_logged": True, "other_game_preserved": True})
+                            print("PASS native fatal signal captured; other game's real RMS unchanged", flush=True)
+                            break
+                        result_file = save / "diagnostic-result.json"
+                        journal = save / "last-session.json"
+                        if result_file.exists() and journal.exists() and json.loads(journal.read_text()).get("status") == "finished":
+                            result = json.loads(result_file.read_text())
+                            assert result["pass"] and result["launches"] == expected, result
+                            geometry = json.loads((save / "diagnostic-input-layout.json").read_text())
+                            assert geometry["valid"] and geometry["scaling"] == scaling, geometry
+                            assert geometry["orientation"] == orientation + ".", geometry
+                            assert screenshot, "No screenshot of a displayed frame"
+                            text = native.read_text(errors="replace")
+                            assert "MIDlet lifecycle complete" in text and "[Studio diagnostics]" in text, "Missing captured JVM logs"
+                            shutil.copyfile(native, ROOT / f"build/logs/{prefix}-native-{number}.log")
+                            result.update({"geometry": geometry, "case": kind, "resource": resource})
                             results.append(result)
-                            print(f"PASS simulator launch {iteration}: {result}", flush=True)
+                            print(f"PASS {prefix} case {number}: {result}", flush=True)
                             break
                     time.sleep(0.5)
-                else:
-                    raise RuntimeError(f"No completed miniJVM diagnostic result. Inspect {logpath}")
+                else: raise RuntimeError(f"No completed diagnostic result; inspect {logpath}")
             finally:
-                subprocess.run(["xcrun", "simctl", "terminate", udid, BUNDLE], check=False)
+                subprocess.run(["xcrun", "simctl", "terminate", udid, args.bundle], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 process.terminate()
                 try: process.wait(timeout=10)
                 except subprocess.TimeoutExpired: process.kill()
-    (ROOT / "build/logs/simulator-status.json").write_text(json.dumps({
-        "simulator": device["name"], "runtime": "iOS 26.2", "passes": results,
-        "iphone_tested": False, "input": "synthetic native input using the production repeat controller"
+    if args.standalone:
+        assert json.loads((documents / "launch-mode.json").read_text())["mode"] == "standalone"
+        assert len(saves()) == 1, "Standalone app should launch only its embedded game"
+    (ROOT / f"build/logs/{prefix}-status.json").write_text(json.dumps({
+        "simulator": device["name"], "runtime": "iOS 26.2", "bundle": args.bundle,
+        "cases": results, "iphone_tested": False, "input": "synthetic production-controller events"
     }, indent=2))
-    print("PASS: real iOS-simulator miniJVM execution, Canvas, input, pause/resume and persistent RMS")
+    print(f"PASS: {prefix} actual miniJVM runtime, display modes, input, persistence and captured logs")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()

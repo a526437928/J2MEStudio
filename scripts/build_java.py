@@ -67,6 +67,15 @@ def main():
                     [runtime, JARS / "j2me_api.jar"], ROOT / "test_midlet/MANIFEST.MF")
         compile_jar(ROOT / "fixtures/studio_diagnostics/src", ROOT / "J2MEEmulator/Resources/apps/studio_diagnostics.jar",
                     [runtime, JARS / "j2me_api.jar"], ROOT / "fixtures/studio_diagnostics/MANIFEST.MF")
+        original = ROOT / "J2MEEmulator/Resources/apps/studio_diagnostics.jar"
+        secondary = original.with_name("studio_diagnostics_secondary.jar")
+        with zipfile.ZipFile(original) as source, zipfile.ZipFile(secondary, "w") as archive:
+            for entry in source.infolist():
+                data = source.read(entry.filename)
+                if entry.filename == "META-INF/MANIFEST.MF":
+                    data = data.replace("J2ME Studio 诊断".encode(), "J2ME Studio 诊断副本".encode())
+                archive.writestr(entry, data)
+
 
 
 if __name__ == "__main__":

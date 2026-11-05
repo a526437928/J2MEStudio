@@ -19,7 +19,8 @@ xcodebuild -project J2MEEmulator.xcodeproj -scheme J2MEEmulator \
   -derivedDataPath build/DerivedData -resultBundlePath build/Build.xcresult \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
-  PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID:-org.j2mestudio.emulator}" build
+  PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID:-org.j2mestudio.emulator}" \
+  INFOPLIST_KEY_CFBundleDisplayName="${DISPLAY_NAME:-J2ME Studio}" build
 APP="$ROOT/build/DerivedData/Build/Products/Release-iphoneos/J2MEStudio.app"
 test -d "$APP"
 # Save the successful .app before attempting IPA validation/packaging.

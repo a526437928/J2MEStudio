@@ -3,6 +3,7 @@ import UIKit
 @MainActor enum DiagnosticExport {
     static func present(saveRoot: URL, from controller: UIViewController) {
         do {
+            studio_log_flush()
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("J2ME-Logs-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var files: [URL] = []

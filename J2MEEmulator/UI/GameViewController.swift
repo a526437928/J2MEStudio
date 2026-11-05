@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import Darwin
 
 // MARK: - Layout mode (extensible for future layouts)
 
@@ -149,6 +150,9 @@ class GameViewController: UIViewController {
                     j2me_input_post_key(20, 0)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { j2me_input_post_key(21, 0) }
+                if ProcessInfo.processInfo.arguments.contains("--studio-crash-test") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { raise(SIGABRT) }
+                }
             }
         }
 

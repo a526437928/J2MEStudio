@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 nonisolated struct ControlPlacement: Codable, Sendable {
     var x: Double

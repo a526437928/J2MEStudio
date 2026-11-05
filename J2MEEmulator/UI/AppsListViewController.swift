@@ -181,8 +181,8 @@ class AppsListViewController: UIViewController,
         }
     }
 
-    private func installDiagnostics() {
-        guard let url = Bundle.main.url(forResource: "studio_diagnostics", withExtension: "jar") else {
+    private func installDiagnostics(resource: String = "studio_diagnostics") {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "jar") else {
             showMessage("测试文件缺失", "此构建未包含测试 MIDlet，请重新下载完整构建。")
             return
         }
@@ -275,11 +275,17 @@ class AppsListViewController: UIViewController,
     private func startSmokeTestIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("--studio-smoke-test"), !smokeStarted else { return }
         smokeStarted = true
-        if let app = allApps.first(where: { $0.fileName == "studio_diagnostics.jar" }) {
+        let argument = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--studio-fixture=") }
+        let resource = argument.map { String($0.dropFirst(17)) } ?? "studio_diagnostics"
+        if let app = allApps.first(where: { $0.fileName == resource + ".jar" }) {
+            if ProcessInfo.processInfo.arguments.contains("--studio-restore-latest") {
+                do { try RMSSnapshots(saveRoot: URL(fileURLWithPath: app.saveRoot)).restoreLatest() }
+                catch { showMessage("恢复失败", error.localizedDescription); return }
+            }
             launch(app)
         } else {
             smokeStarted = false
-            installDiagnostics()
+            installDiagnostics(resource: resource)
         }
     }
 

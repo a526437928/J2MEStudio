@@ -9,6 +9,8 @@
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 static int saved_out = -1, saved_error = -1;
 
+void studio_log_flush(void) { fflush(stdout); fflush(stderr); }
+
 int studio_log_begin(const char *path) {
     if (pthread_mutex_trylock(&log_lock)) return EBUSY;
     fflush(stdout); fflush(stderr);
