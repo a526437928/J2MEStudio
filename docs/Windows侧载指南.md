@@ -1,8 +1,10 @@
 # Windows → iPhone 安装与更新
 
-当前 **0.4.0 (4)**：[成功构建 #9](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41989259650/artifacts/13398575560)。本地交付为 `cloud-build-9/device/J2MEStudio-unsigned.ipa`。Artifact 内另一份 `StudioDiagnostics-standalone-unsigned.ipa` 是点图标直接启动的独立诊断 App，使用不同 Bundle ID；通常先安装通用模拟器即可。
+当前 **0.4.1 (5)**：[成功构建 #10](https://github.com/a526437928/J2MEStudio/actions/runs/41999492045)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41999492045/artifacts/13402527134)。本地交付为 `cloud-build-10/device/J2MEStudio-unsigned.ipa`。Artifact 内另一份 `StudioDiagnostics-standalone-unsigned.ipa` 是点图标直接启动的独立诊断 App，使用不同 Bundle ID；通常先安装通用模拟器即可。
 
-已开始测试 0.2.0 的用户可以先完成基础验收，再覆盖更新 0.4.0，验证 RMS 是否保留。旧包保留在 `cloud-build-5/device`；不同云构建目录不可混淆。更新前先备份完整 Documents。
+已开始测试旧版的用户先备份完整 Documents，再用相同 Apple ID 和最终 Bundle ID 覆盖更新，不卸载旧 App。旧包保留在 `cloud-build-5/device` 和 `cloud-build-9/device`；不同云构建目录不可混淆。
+
+本次 0.4.1 修复测试程序遗漏方向盘数字 6 的组合诊断问题。覆盖更新后须重新点“测试 MIDlet”，进入新条目 **J2ME Studio 诊断 0.4.1**。旧诊断条目和旧存档保留，不能拿旧条目验证修复。新诊断的计数独立，从其自身首次值开始比较。详见真机问题记录。
 
 ## 下载与辨别产物
 
