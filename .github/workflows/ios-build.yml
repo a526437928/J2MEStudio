@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   device:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
