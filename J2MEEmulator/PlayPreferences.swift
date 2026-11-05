@@ -59,9 +59,12 @@ nonisolated enum PlayGeometry {
         case .original: physical = min(1, fit)
         }
         let size = CGSize(width: canvas.width * physical / displayScale, height: canvas.height * physical / displayScale)
-        return CGRect(x: floor((area.midX - size.width / 2) * displayScale) / displayScale,
-                      y: floor((area.midY - size.height / 2) * displayScale) / displayScale,
-                      width: size.width, height: size.height)
+        // Floating-point fit widths can be one ULP wider than the area; a raw
+        // floor then shifts the left edge by a whole physical pixel.
+        let frame = CGRect(x: floor((area.midX - size.width / 2) * displayScale + 0.000001) / displayScale,
+                           y: floor((area.midY - size.height / 2) * displayScale + 0.000001) / displayScale,
+                           width: size.width, height: size.height)
+        return clamp(frame, to: area)
     }
 
     static func clamp(_ frame: CGRect, to area: CGRect) -> CGRect {

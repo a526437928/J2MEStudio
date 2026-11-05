@@ -273,13 +273,13 @@ class GameViewController: UIViewController {
             defaults["left"] = CGRect(x: safe.minX, y: content.maxY + 4, width: 72, height: 36)
             defaults["right"] = CGRect(x: safe.maxX - 72, y: content.maxY + 4, width: 72, height: 36)
         }
-        emulatorView.frame = PlayGeometry.screen(in: content, canvas: CGSize(width: canvasWidth, height: canvasHeight), displayScale: view.window?.screen.scale ?? 3, mode: preferences.scaling)
+        emulatorView.frame = PlayGeometry.screen(in: content, canvas: CGSize(width: CGFloat(canvasWidth), height: CGFloat(canvasHeight)), displayScale: view.window?.screen.scale ?? 3, mode: preferences.scaling)
         emulatorView.layer.cornerRadius = preferences.scaling == .fit ? 6 : 0
         glowContainer.frame = emulatorView.frame; glowContentView.frame = glowContainer.bounds
         for (name, child) in [("joystick", joystickView as UIView?), ("numpad", numpadView as UIView?), ("left", lskButton as UIView?), ("right", rskButton as UIView?)] {
             guard let child, var frame = defaults[name] else { continue }
             if let custom = preferences.controls[layoutPrefix + name] {
-                frame.origin = CGPoint(x: safe.minX + safe.width * custom.x - frame.width/2, y: safe.minY + safe.height * custom.y - frame.height/2)
+                frame.origin = CGPoint(x: safe.minX + safe.width * CGFloat(custom.x) - frame.width/2, y: safe.minY + safe.height * CGFloat(custom.y) - frame.height/2)
             }
             child.frame = PlayGeometry.clamp(frame, to: safe)
             child.alpha = CGFloat(preferences.opacity)

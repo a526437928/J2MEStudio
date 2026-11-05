@@ -106,8 +106,8 @@ class NumpadView: UIView {
                 width: btnW, height: btnH)
             if let custom = editedKeys[String(code)] {
                 let size = CGSize(width: btnW * CGFloat(custom.scale), height: btnH * CGFloat(custom.scale))
-                let frame = CGRect(x: bounds.width * custom.x - size.width / 2,
-                    y: bounds.height * custom.y - size.height / 2, width: size.width, height: size.height)
+                let frame = CGRect(x: bounds.width * CGFloat(custom.x) - size.width / 2,
+                    y: bounds.height * CGFloat(custom.y) - size.height / 2, width: size.width, height: size.height)
                 btn.frame = PlayGeometry.clamp(frame, to: CGRect(x: 0, y: commandHeight, width: w, height: h - commandHeight))
             }
         }

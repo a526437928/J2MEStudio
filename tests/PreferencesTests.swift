@@ -12,7 +12,7 @@ import CoreGraphics
                 for density: CGFloat in [1, 2, 3] {
                     for mode in PlayPreferences.Scaling.allCases {
                         let frame = PlayGeometry.screen(in: area, canvas: canvas, displayScale: density, mode: mode)
-                        try require(area.insetBy(dx: -0.01, dy: -0.01).contains(frame), "Keep the game inside the available screen")
+                        try require(area.insetBy(dx: -0.01, dy: -0.01).contains(frame), "Screen containment: \(area) \(canvas) \(density) \(mode) -> \(frame)")
                         try require(abs(frame.width/frame.height - canvas.width/canvas.height) < 0.0001, "Preserve aspect ratio")
                         let scale = frame.width * density / canvas.width
                         if mode == .integer && scale >= 1 { try require(abs(scale - scale.rounded()) < 0.0001, "Integer physical pixels") }
