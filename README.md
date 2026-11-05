@@ -4,6 +4,8 @@
 
 ## 当前验证状态
 
+**最新 0.2.0：**[成功构建 #5](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006)、[IPA/.app/截图下载](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006/artifacts/13394495065)、[完整验收记录](docs/第二阶段验收.md)。26 项 Swift 检查及两次 iOS 模拟器中的真实 miniJVM 运行已通过；签名和实体 iPhone 未验证。
+
 Windows 与 GitHub macOS Runner 均已实际编译 439 个 Java API 源文件及原仓库测试 MIDlet，源码检查、RMS 宿主测试和打包回归测试通过。[真实云构建 #1](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功编译 C/Objective-C/Swift，并上传真机 `.app` 及未签名 IPA。IPA 仍需要在 Windows 本地重新签名。**不能把 Java 编译、iOS 编译、IPA 封装、签名和 iPhone 运行视为同一结果。** 最新证据见 [第一阶段审查](docs/第一阶段审查.md)。
 
 ## 第二阶段使用

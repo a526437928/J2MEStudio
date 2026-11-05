@@ -1,5 +1,7 @@
 # Windows → iPhone 安装与更新
 
+第二阶段最新版本为 **0.2.0 (2)**：[成功构建 #5](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006)、[下载 IPA Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41980458006/artifacts/13394495065)。本地交付为 `cloud-build-5/device/J2MEStudio-unsigned.ipa`，推荐使用此版本；下文首轮构建链接仅保留作历史记录。更新前先备份完整 Documents。
+
 前提：一次真实 Actions 构建成功，且产物中确实存在 `J2MEStudio-unsigned.ipa`。[首轮真实构建](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625) 已成功生成；[下载 Artifact](https://github.com/a526437928/J2MEStudio/actions/runs/41974554625/artifacts/13391216595) 后解压使用 IPA。本地交付 `cloud-build-1/device/J2MEStudio-unsigned.ipa` 为同一真实产物。
 
 ## 下载与辨别产物
