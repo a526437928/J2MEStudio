@@ -173,10 +173,13 @@ nonisolated enum ZIPReader {
         let dataStart = offset + 30 + localNameLen + localExtraLen
 
         // Bound a single extracted metadata/icon/class entry, not the game count.
-        guard dataStart + compSize <= size, uncompSize <= 16 * 1024 * 1024 else { return nil }
+        guard dataStart + compSize <= size, compSize <= 16 * 1024 * 1024,
+              uncompSize <= 16 * 1024 * 1024 else { return nil }
         if uncompSize == 0 { return compSize == 0 ? Data() : nil }
+        guard compSize > 0 else { return nil }
 
         if method == 0 {
+            guard compSize == uncompSize else { return nil }
             // Stored (no compression)
             return Data(bytes: base + dataStart, count: compSize)
         } else if method == 8 {

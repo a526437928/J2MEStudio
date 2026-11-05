@@ -123,7 +123,7 @@ nonisolated final class GameLibrary: @unchecked Sendable {
                 let key = Self.legacyKey(source.lastPathComponent)
                 if let position = index.games.firstIndex(where: { $0.id == game.id }), index.games[position].legacySettingsKey == nil {
                     var candidate = index
-                    let ambiguous = groups[key, default: []].count > 1 || index.games.contains {
+                    let ambiguous = key.isEmpty || key == "." || key == ".." || groups[key, default: []].count > 1 || index.games.contains {
                         $0.id != game.id && Self.legacyKey($0.fileName) == key
                     }
                     let old = documents.appendingPathComponent("Games Data", isDirectory: true).appendingPathComponent(key)

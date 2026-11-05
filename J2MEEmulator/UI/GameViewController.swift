@@ -351,6 +351,8 @@ class GameViewController: UIViewController {
 
     private func runMIDlet() -> String? {
         guard let resRoot = Bundle.main.resourcePath else { return "运行库资源目录缺失。" }
+        do { try JARMetadata.validate(URL(fileURLWithPath: jarPath)) }
+        catch { return "无法启动这个 JAR：" + error.localizedDescription }
         do {
             try FileManager.default.createDirectory(atPath: saveRoot, withIntermediateDirectories: true)
             try SessionJournal.write(saveRoot: saveRoot, status: "running", detail: "正在初始化 JVM")
@@ -363,6 +365,7 @@ class GameViewController: UIViewController {
                                          Int32(fpsLimit))
         guard initResult == 0 else {
             print("[Swift] ERROR: JVM init failed with code \(initResult)")
+            jvm_bridge_destroy()
             try? SessionJournal.write(saveRoot: saveRoot, status: "failed", detail: "JVM init \(initResult)")
             return "JVM 初始化失败，错误码 \(initResult)。"
         }

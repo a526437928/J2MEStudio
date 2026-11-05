@@ -159,10 +159,11 @@ void jvm_bridge_destroy(void) {
         j2me_micro3d_gl_cleanup();
         j2me_m3g_cleanup();
         j2me_render_cleanup(); // also resets render_stopped flag
-        atomic_store(&g_jvm_stop_requested, 0);
 
         printf("[JVM Bridge] JVM destroyed, native state cleaned up\n");
     }
+    // Also clear a stop request after failed initialization, when g_jvm is NULL.
+    atomic_store(&g_jvm_stop_requested, 0);
 }
 
 void jvm_bridge_request_stop(void) {
